@@ -195,11 +195,16 @@ export default function FindSchool() {
                 disabled={isSubmitting || searchMutation.isPending}
               >
                 {(isSubmitting || searchMutation.isPending) ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Searching...
+                  </>
                 ) : (
-                  <Search className="h-4 w-4 mr-2" />
+                  <>
+                    <Search className="h-4 w-4 mr-2" />
+                    Find Schools
+                  </>
                 )}
-                Find Schools
               </Button>
             </form>
           </CardContent>
@@ -246,7 +251,7 @@ export default function FindSchool() {
                           {addedSchools.has(school.id) ? (
                             <Button disabled size="sm" variant="outline">
                               <Check className="h-4 w-4 mr-2" />
-                              Added to List
+                              Already Added
                             </Button>
                           ) : (
                             <Button

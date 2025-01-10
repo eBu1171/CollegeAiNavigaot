@@ -29,14 +29,9 @@ export default function Chat() {
   const queryClient = useQueryClient();
 
   // Get only user's selected schools
-  const { data: schools, isLoading: loadingSchools } = useQuery<School[]>({
+  const { data: schools, isLoading: loadingSchools } = useQuery<{ schools: School[] }>({
     queryKey: ["/api/user/stats"],
-    select: (data) => data.schools.map(school => ({
-      id: school.id,
-      name: school.name,
-      location: school.location,
-      status: school.status
-    }))
+    select: (data) => data,
   });
 
   const { data: messages, isLoading: loadingMessages } = useQuery<Message[]>({
@@ -46,7 +41,11 @@ export default function Chat() {
 
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
-      const response = await fetch(`/api/chat/${selectedSchool?.id}`, {
+      if (!selectedSchool) {
+        throw new Error("Please select a school first");
+      }
+
+      const response = await fetch(`/api/chat/${selectedSchool.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -54,7 +53,7 @@ export default function Chat() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to send message");
+        throw new Error(await response.text());
       }
 
       return response.json();
@@ -97,10 +96,10 @@ export default function Chat() {
                 <div className="flex justify-center py-4">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
-              ) : schools && schools.length > 0 ? (
+              ) : schools?.schools && schools.schools.length > 0 ? (
                 <ScrollArea className="h-[calc(100vh-12rem)]">
                   <div className="space-y-2">
-                    {schools.map((school) => (
+                    {schools.schools.map((school) => (
                       <Button
                         key={school.id}
                         variant={
