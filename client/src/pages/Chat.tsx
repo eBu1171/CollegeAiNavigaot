@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ type School = {
 export default function Chat() {
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [messageInput, setMessageInput] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -32,7 +33,7 @@ export default function Chat() {
     queryKey: ["/api/user/stats"],
   });
 
-  const { data: messages, isLoading: loadingMessages } = useQuery<Message[]>({
+  const { data: messages = [], isLoading: loadingMessages } = useQuery<Message[]>({
     queryKey: ["/api/chat", selectedSchool?.id],
     enabled: !!selectedSchool,
   });
@@ -42,8 +43,6 @@ export default function Chat() {
       if (!selectedSchool) {
         throw new Error("Please select a school first");
       }
-
-      console.log("Sending message to school:", selectedSchool.id); // Debug log
 
       const response = await fetch(`/api/chat/${selectedSchool.id}`, {
         method: "POST",
@@ -60,9 +59,12 @@ export default function Chat() {
       return response.json();
     },
     onSuccess: (newMessages) => {
+      // Optimistically update the messages
       queryClient.setQueryData(
         ["/api/chat", selectedSchool?.id],
-        (oldMessages: Message[] = []) => [...newMessages, ...oldMessages]
+        (oldMessages: Message[] = []) => [...oldMessages, ...newMessages].sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
       );
       setMessageInput("");
     },
@@ -75,10 +77,21 @@ export default function Chat() {
     },
   });
 
-  const handleSendMessage = () => {
-    if (!messageInput.trim()) return;
+  const handleSendMessage = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!messageInput.trim() || sendMessageMutation.isPending) return;
     sendMessageMutation.mutate(messageInput);
   };
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages]);
 
   return (
     <div className="container mx-auto px-4 py-8 h-[calc(100vh-2rem)]">
@@ -109,10 +122,7 @@ export default function Chat() {
                             : "ghost"
                         }
                         className="w-full justify-start"
-                        onClick={() => {
-                          console.log("Selected school:", school); // Debug log
-                          setSelectedSchool(school);
-                        }}
+                        onClick={() => setSelectedSchool(school)}
                       >
                         <div className="text-left">
                           <div>{school.name}</div>
@@ -152,15 +162,15 @@ export default function Chat() {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               {/* Messages */}
-              <ScrollArea className="flex-1 mb-4 pr-4">
-                <AnimatePresence initial={false}>
+              <ScrollArea ref={scrollRef} className="flex-1 mb-4">
+                <div className="space-y-4 pr-4">
                   {loadingMessages ? (
                     <div className="flex justify-center py-4">
                       <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
-                  ) : messages ? (
-                    <div className="space-y-4">
-                      {messages.map((message) => (
+                  ) : messages.length > 0 ? (
+                    <AnimatePresence initial={false}>
+                      {[...messages].reverse().map((message) => (
                         <motion.div
                           key={message.id}
                           initial={{ opacity: 0, y: 20 }}
@@ -178,34 +188,40 @@ export default function Chat() {
                                 : "bg-primary text-primary-foreground"
                             }`}
                           >
-                            <p className="leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                            <p className="leading-relaxed whitespace-pre-wrap">
+                              {message.content}
+                            </p>
                             <span className="text-xs opacity-70 mt-2 block">
                               {new Date(message.createdAt).toLocaleTimeString()}
                             </span>
                           </div>
                         </motion.div>
                       ))}
-                      {sendMessageMutation.isPending && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="flex justify-start"
-                        >
-                          <div className="max-w-[70%] p-4 rounded-lg shadow-sm bg-muted">
-                            <div className="flex items-center space-x-2">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              <span className="text-sm">AI is thinking...</span>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
+                    </AnimatePresence>
+                  ) : selectedSchool ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Start chatting about {selectedSchool.name}
                     </div>
                   ) : null}
-                </AnimatePresence>
+                  {sendMessageMutation.isPending && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex justify-start"
+                    >
+                      <div className="max-w-[70%] p-4 rounded-lg shadow-sm bg-muted">
+                        <div className="flex items-center space-x-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="text-sm">AI is thinking...</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
               </ScrollArea>
 
               {/* Input */}
-              <div className="flex gap-2">
+              <form onSubmit={handleSendMessage} className="flex gap-2">
                 <Input
                   placeholder={
                     selectedSchool
@@ -214,12 +230,11 @@ export default function Chat() {
                   }
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
                   disabled={!selectedSchool || sendMessageMutation.isPending}
                   className="flex-1"
                 />
                 <Button
-                  onClick={handleSendMessage}
+                  type="submit"
                   disabled={
                     !selectedSchool ||
                     !messageInput.trim() ||
@@ -236,7 +251,7 @@ export default function Chat() {
                     </>
                   )}
                 </Button>
-              </div>
+              </form>
             </CardContent>
           </Card>
         </div>
