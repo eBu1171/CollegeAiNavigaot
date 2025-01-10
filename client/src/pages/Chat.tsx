@@ -61,7 +61,7 @@ export default function Chat() {
       }
       
       console.log('Sending message to school:', selectedSchool);
-      const response = await fetch(`/api/chat/${selectedSchool.schoolId}`, {
+      const response = await fetch(`/api/chat/${selectedSchool.schoolId || selectedSchool.id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
