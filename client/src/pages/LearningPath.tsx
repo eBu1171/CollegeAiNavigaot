@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, createElement } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   Clock,
   ArrowRight,
   Loader2,
+  Lock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
@@ -198,7 +199,7 @@ export default function LearningPath() {
                                     : "bg-primary/10"
                                 }`}
                               >
-                                {React.createElement(getQuestIcon(quest.type), {
+                                {createElement(getQuestIcon(quest.type), {
                                   className: "h-6 w-6 text-primary",
                                 })}
                               </div>
@@ -290,7 +291,7 @@ export default function LearningPath() {
                                   : "bg-muted"
                               }`}
                             >
-                              {React.createElement(
+                              {createElement(
                                 achievement.unlocked ? Award : Lock,
                                 {
                                   className: "h-6 w-6 text-primary",
