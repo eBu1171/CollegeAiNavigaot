@@ -5,7 +5,7 @@ import { Sidebar } from "./components/layout/Sidebar";
 import AuthPage from "./pages/AuthPage";
 import Home from "./pages/Home";
 import FindSchool from "./pages/FindSchool";
-import Chat from "./pages/Chat";
+
 import ChanceMe from "./pages/ChanceMe";
 import Dashboard from "./pages/Dashboard";
 import LearningPath from "./pages/LearningPath";

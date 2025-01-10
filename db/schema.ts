@@ -91,14 +91,7 @@ export const userAchievements = pgTable("user_achievements", {
   unlockedAt: timestamp("unlocked_at").defaultNow(),
 });
 
-export const messages = pgTable("messages", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id).notNull(),
-  schoolId: integer("school_id").references(() => schools.id).notNull(),
-  content: text("content").notNull(),
-  isAI: boolean("is_ai").default(false).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+
 
 export const userSchools = pgTable("user_schools", {
   id: serial("id").primaryKey(),

@@ -51,12 +51,7 @@ export default function Home() {
               description="Get personalized college recommendations based on your preferences and profile"
               href="/find-school"
             />
-            <FeatureCard
-              icon={MessageCircle}
-              title="Chat"
-              description="Have conversations about specific schools and get instant answers"
-              href="/chat"
-            />
+            
             <FeatureCard
               icon={GraduationCap}
               title="ChanceMe"
