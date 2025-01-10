@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { db } from "@db";
 import { schools, userSchools, chanceMe, messages, type User } from "@db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { generateCollegeResponse } from "./utils/perplexity";
 
 export function registerRoutes(app: Express): Server {
   // School routes
@@ -50,6 +51,17 @@ export function registerRoutes(app: Express): Server {
       const schoolId = parseInt(req.params.schoolId);
       const { content } = req.body;
 
+      // Get school information
+      const [school] = await db
+        .select()
+        .from(schools)
+        .where(eq(schools.id, schoolId))
+        .limit(1);
+
+      if (!school) {
+        return res.status(404).json({ error: "School not found" });
+      }
+
       // Insert user message
       const [userMessage] = await db
         .insert(messages)
@@ -61,16 +73,8 @@ export function registerRoutes(app: Express): Server {
         })
         .returning();
 
-      // Generate AI response (simple response for now)
-      const aiResponses = [
-        "That's a great question about our university!",
-        "I can help you understand more about our programs.",
-        "Let me provide you with more information about that.",
-        "That's an interesting point you raise about our campus.",
-        "I'd be happy to explain more about our admissions process.",
-      ];
-
-      const aiResponse = aiResponses[Math.floor(Math.random() * aiResponses.length)];
+      // Generate AI response using Perplexity
+      const aiResponse = await generateCollegeResponse(school.name, content);
 
       const [aiMessage] = await db
         .insert(messages)
@@ -84,6 +88,7 @@ export function registerRoutes(app: Express): Server {
 
       res.json([userMessage, aiMessage]);
     } catch (error) {
+      console.error('Chat error:', error);
       res.status(500).json({ error: "Failed to send message" });
     }
   });
