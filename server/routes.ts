@@ -5,6 +5,11 @@ import { schools, userSchools, chanceMe, messages, type User, users } from "@db/
 import { eq, and, desc, sql } from "drizzle-orm";
 import { generateCollegeResponse, analyzeAdmissionChances } from "./utils/perplexity";
 import { quests, achievements, userQuests, userAchievements } from "@db/schema";
+import { 
+  applicationDeadlines,
+  checklistItems,
+  userChecklist,
+} from "@db/schema";
 
 export function registerRoutes(app: Express): Server {
   // User-School relationship routes
@@ -691,6 +696,176 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error("Complete task error:", error);
       res.status(500).json({ error: "Failed to complete task" });
+    }
+  });
+
+  // Timeline routes
+  app.get("/api/timeline/schools", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const userSchoolsData = await db
+        .select({
+          id: userSchools.id,
+          userId: userSchools.userId,
+          schoolId: userSchools.schoolId,
+          name: schools.name,
+          location: schools.location,
+          deadlines: applicationDeadlines,
+        })
+        .from(userSchools)
+        .leftJoin(schools, eq(userSchools.schoolId, schools.id))
+        .leftJoin(applicationDeadlines, eq(schools.id, applicationDeadlines.schoolId))
+        .where(eq(userSchools.userId, (req.user as User).id));
+
+      // Transform the data to match the frontend expectations
+      const transformedData = userSchoolsData.map((school) => ({
+        id: school.schoolId,
+        name: school.name,
+        location: school.location,
+        deadlines: {
+          earlyAction: school.deadlines?.earlyAction?.toISOString(),
+          earlyDecision: school.deadlines?.earlyDecision?.toISOString(),
+          regularDecision: school.deadlines?.regularDecision?.toISOString(),
+          financialAid: school.deadlines?.financialAid?.toISOString(),
+          scholarship: school.deadlines?.scholarship?.toISOString(),
+        },
+      }));
+
+      res.json(transformedData);
+    } catch (error) {
+      console.error('Timeline schools error:', error);
+      res.status(500).json({ error: "Failed to fetch schools timeline" });
+    }
+  });
+
+  app.get("/api/timeline/checklist/:schoolId", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const schoolId = parseInt(req.params.schoolId);
+      if (isNaN(schoolId)) {
+        return res.status(400).send("Invalid school ID");
+      }
+
+      // Get user's checklist items for this school
+      const userItems = await db
+        .select({
+          id: userChecklist.id,
+          name: checklistItems.name,
+          description: checklistItems.description,
+          category: checklistItems.category,
+          completed: userChecklist.completed,
+          completedAt: userChecklist.completedAt,
+          dueDate: userChecklist.dueDate,
+        })
+        .from(userChecklist)
+        .leftJoin(checklistItems, eq(userChecklist.itemId, checklistItems.id))
+        .where(
+          and(
+            eq(userChecklist.userId, (req.user as User).id),
+            eq(userChecklist.schoolId, schoolId)
+          )
+        );
+
+      // If no items exist for this user/school combination, create default ones
+      if (!userItems.length) {
+        // Get generic checklist items
+        const genericItems = await db
+          .select()
+          .from(checklistItems)
+          .where(eq(checklistItems.isGeneric, true));
+
+        // Get school deadlines to calculate due dates
+        const [schoolDeadlines] = await db
+          .select()
+          .from(applicationDeadlines)
+          .where(eq(applicationDeadlines.schoolId, schoolId))
+          .limit(1);
+
+        // Create user checklist items
+        const newItems = await Promise.all(
+          genericItems.map(async (item) => {
+            const dueDate = new Date(schoolDeadlines.regularDecision);
+            dueDate.setDate(
+              dueDate.getDate() - (item.daysBeforeDeadline || 14)
+            );
+
+            const [userItem] = await db
+              .insert(userChecklist)
+              .values({
+                userId: (req.user as User).id,
+                schoolId,
+                itemId: item.id,
+                dueDate,
+                completed: false,
+              })
+              .returning();
+
+            return {
+              id: userItem.id,
+              name: item.name,
+              description: item.description,
+              category: item.category,
+              completed: false,
+              dueDate: dueDate.toISOString(),
+            };
+          })
+        );
+
+        return res.json(newItems);
+      }
+
+      res.json(userItems.map(item => ({
+        ...item,
+        dueDate: item.dueDate.toISOString(),
+        completedAt: item.completedAt?.toISOString(),
+      })));
+    } catch (error) {
+      console.error('Checklist fetch error:', error);
+      res.status(500).json({ error: "Failed to fetch checklist" });
+    }
+  });
+
+  app.post("/api/timeline/checklist/:itemId", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const itemId = parseInt(req.params.itemId);
+      const { completed } = req.body;
+
+      if (isNaN(itemId)) {
+        return res.status(400).send("Invalid item ID");
+      }
+
+      const [updatedItem] = await db
+        .update(userChecklist)
+        .set({
+          completed,
+          completedAt: completed ? new Date() : null,
+        })
+        .where(
+          and(
+            eq(userChecklist.id, itemId),
+            eq(userChecklist.userId, (req.user as User).id)
+          )
+        )
+        .returning();
+
+      if (!updatedItem) {
+        return res.status(404).send("Checklist item not found");
+      }
+
+      res.json(updatedItem);
+    } catch (error) {
+      console.error('Checklist update error:', error);
+      res.status(500).json({ error: "Failed to update checklist item" });
     }
   });
 
