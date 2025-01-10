@@ -342,6 +342,8 @@ export function registerRoutes(app: Express): Server {
         .leftJoin(schools, eq(userSchools.schoolId, schools.id))
         .leftJoin(chanceMe, eq(userSchools.schoolId, chanceMe.schoolId))
         .where(eq(userSchools.userId, (req.user as User).id));
+      
+      console.log('User schools data:', userSchoolsData);
 
       const stats = {
         totalSchools: userSchoolsData.length,
