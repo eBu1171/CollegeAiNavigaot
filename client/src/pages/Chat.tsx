@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { motion, AnimatePresence } from "framer-motion";
 
 type Message = {
   id: number;
@@ -25,8 +26,9 @@ export default function Chat() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Get only user's selected schools
   const { data: schools, isLoading: loadingSchools } = useQuery<School[]>({
-    queryKey: ["/api/schools"],
+    queryKey: ["/api/user-schools"],
   });
 
   const { data: messages, isLoading: loadingMessages } = useQuery<Message[]>({
@@ -77,7 +79,7 @@ export default function Chat() {
         <div className="col-span-3">
           <Card className="h-full">
             <CardHeader>
-              <CardTitle>Your Schools</CardTitle>
+              <CardTitle>Selected Schools</CardTitle>
             </CardHeader>
             <CardContent>
               {loadingSchools ? (
@@ -120,36 +122,56 @@ export default function Chat() {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
               {/* Messages */}
-              <ScrollArea className="flex-1 mb-4">
-                {loadingMessages ? (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {messages?.map((message) => (
-                      <div
-                        key={message.id}
-                        className={`flex ${
-                          message.isAI ? "justify-start" : "justify-end"
-                        }`}
-                      >
-                        <div
-                          className={`max-w-[70%] p-3 rounded-lg ${
-                            message.isAI
-                              ? "bg-secondary"
-                              : "bg-primary text-primary-foreground"
+              <ScrollArea className="flex-1 mb-4 pr-4">
+                <AnimatePresence initial={false}>
+                  {loadingMessages ? (
+                    <div className="flex justify-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {messages?.map((message) => (
+                        <motion.div
+                          key={message.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -20 }}
+                          transition={{ duration: 0.2 }}
+                          className={`flex ${
+                            message.isAI ? "justify-start" : "justify-end"
                           }`}
                         >
-                          <p>{message.content}</p>
-                          <span className="text-xs opacity-70">
-                            {new Date(message.createdAt).toLocaleTimeString()}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                          <div
+                            className={`max-w-[70%] p-4 rounded-lg shadow-sm ${
+                              message.isAI
+                                ? "bg-muted"
+                                : "bg-primary text-primary-foreground"
+                            }`}
+                          >
+                            <p className="leading-relaxed">{message.content}</p>
+                            <span className="text-xs opacity-70 mt-2 block">
+                              {new Date(message.createdAt).toLocaleTimeString()}
+                            </span>
+                          </div>
+                        </motion.div>
+                      ))}
+                      {sendMessageMutation.isPending && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="flex justify-start"
+                        >
+                          <div className="max-w-[70%] p-4 rounded-lg shadow-sm bg-muted">
+                            <div className="flex items-center space-x-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span className="text-sm">AI is thinking...</span>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                  )}
+                </AnimatePresence>
               </ScrollArea>
 
               {/* Input */}
@@ -163,13 +185,26 @@ export default function Chat() {
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
                   onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                  disabled={!selectedSchool}
+                  disabled={!selectedSchool || sendMessageMutation.isPending}
+                  className="flex-1"
                 />
                 <Button
                   onClick={handleSendMessage}
-                  disabled={!selectedSchool || !messageInput.trim()}
+                  disabled={
+                    !selectedSchool ||
+                    !messageInput.trim() ||
+                    sendMessageMutation.isPending
+                  }
+                  className="w-24"
                 >
-                  <Send className="h-4 w-4" />
+                  {sendMessageMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Send
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>

@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Plus, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type SchoolSearchForm = {
@@ -40,6 +40,37 @@ export default function FindSchool() {
   const { data: recommendations, isLoading } = useQuery<SchoolRecommendation[]>({
     queryKey: ["/api/schools/search"],
     enabled: searching,
+  });
+
+  const addSchoolMutation = useMutation({
+    mutationFn: async (schoolId: number) => {
+      const response = await fetch("/api/user-schools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ schoolId, status: "interested" }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to add school");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-schools"] });
+      toast({
+        title: "School Added",
+        description: "The school has been added to your list",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const searchMutation = useMutation({
@@ -72,6 +103,10 @@ export default function FindSchool() {
 
   const onSubmit = (data: SchoolSearchForm) => {
     searchMutation.mutate(data);
+  };
+
+  const handleAddSchool = (schoolId: number) => {
+    addSchoolMutation.mutate(schoolId);
   };
 
   return (
@@ -189,9 +224,25 @@ export default function FindSchool() {
                         <p className="text-sm text-muted-foreground">
                           {school.description}
                         </p>
-                        <Button variant="outline" size="sm">
-                          View Details
-                        </Button>
+                        <div className="flex justify-between items-center mt-2">
+                          <Button variant="outline" size="sm">
+                            View Details
+                          </Button>
+                          <Button
+                            onClick={() => handleAddSchool(school.id)}
+                            disabled={addSchoolMutation.isPending}
+                            size="sm"
+                          >
+                            {addSchoolMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : addSchoolMutation.isSuccess ? (
+                              <Check className="h-4 w-4 mr-2" />
+                            ) : (
+                              <Plus className="h-4 w-4 mr-2" />
+                            )}
+                            Add to My Schools
+                          </Button>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>

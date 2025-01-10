@@ -23,6 +23,7 @@ type UserSchool = {
   status: string;
   deadline: string;
   progress: number;
+  admissionTitle?: string;
 };
 
 type Stats = {
@@ -40,11 +41,30 @@ export default function Dashboard() {
     queryKey: ["/api/user/stats"],
   });
 
-  const statusColors: Record<string, string> = {
-    interested: "text-blue-500",
-    applying: "text-yellow-500",
-    accepted: "text-green-500",
-    rejected: "text-red-500",
+  const getStatusColor = (status: string): string => {
+    switch (status.toLowerCase()) {
+      case "interested":
+        return "text-blue-500";
+      case "applying":
+        return "text-yellow-500";
+      case "accepted":
+        return "text-green-500";
+      case "rejected":
+        return "text-red-500";
+      default:
+        return "text-gray-500";
+    }
+  };
+
+  const getAdmissionBadgeColor = (title?: string): string => {
+    if (!title) return "bg-gray-100 text-gray-800";
+    if (title.toLowerCase().includes("competitive")) {
+      return "bg-green-100 text-green-800";
+    }
+    if (title.toLowerCase().includes("average")) {
+      return "bg-yellow-100 text-yellow-800";
+    }
+    return "bg-red-100 text-red-800";
   };
 
   return (
@@ -89,6 +109,7 @@ export default function Dashboard() {
                 <TableRow>
                   <TableHead>School Name</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Admission Title</TableHead>
                   <TableHead>Deadline</TableHead>
                   <TableHead>Progress</TableHead>
                 </TableRow>
@@ -98,10 +119,21 @@ export default function Dashboard() {
                   <TableRow key={school.id}>
                     <TableCell className="font-medium">{school.name}</TableCell>
                     <TableCell>
-                      <span className={statusColors[school.status]}>
+                      <span className={getStatusColor(school.status)}>
                         {school.status.charAt(0).toUpperCase() +
                           school.status.slice(1)}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      {school.admissionTitle && (
+                        <span
+                          className={`px-2 py-1 rounded-full text-sm ${getAdmissionBadgeColor(
+                            school.admissionTitle
+                          )}`}
+                        >
+                          {school.admissionTitle}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center">

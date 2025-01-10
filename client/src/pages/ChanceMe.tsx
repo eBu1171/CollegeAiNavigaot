@@ -1,4 +1,4 @@
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ type ChanceMeForm = {
 
 export default function ChanceMe() {
   const { toast } = useToast();
-  const { register, handleSubmit, formState: { errors } } = useForm<ChanceMeForm>();
+  const { control, register, handleSubmit, formState: { errors } } = useForm<ChanceMeForm>();
 
   const chanceMeMutation = useMutation({
     mutationFn: async (data: ChanceMeForm) => {
@@ -62,6 +62,15 @@ export default function ChanceMe() {
     chanceMeMutation.mutate(data);
   };
 
+  const getAdmissionTitle = (analysis: string) => {
+    if (analysis.toLowerCase().includes('exceptional') || analysis.toLowerCase().includes('excellent')) {
+      return 'Competitive Applicant';
+    } else if (analysis.toLowerCase().includes('strong') || analysis.toLowerCase().includes('good')) {
+      return 'Average Applicant';
+    }
+    return 'Below Average Applicant';
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-3xl mx-auto">
@@ -75,17 +84,24 @@ export default function ChanceMe() {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="school">Select School</Label>
-                <Select {...register("schoolId", { required: true })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a school" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Harvard University</SelectItem>
-                    <SelectItem value="2">Stanford University</SelectItem>
-                    <SelectItem value="3">MIT</SelectItem>
-                    {/* Add more schools */}
-                  </SelectContent>
-                </Select>
+                <Controller
+                  name="schoolId"
+                  control={control}
+                  rules={{ required: true }}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a school" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Harvard University</SelectItem>
+                        <SelectItem value="2">Stanford University</SelectItem>
+                        <SelectItem value="3">MIT</SelectItem>
+                        {/* Add more schools */}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
 
               <div className="space-y-2">
@@ -170,7 +186,18 @@ export default function ChanceMe() {
         {chanceMeMutation.data && (
           <Card className="mt-8">
             <CardHeader>
-              <CardTitle>AI Analysis</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>AI Analysis</span>
+                <span className={`text-lg px-4 py-1 rounded-full ${
+                  getAdmissionTitle(chanceMeMutation.data.aiAnalysis).includes('Competitive') 
+                    ? 'bg-green-100 text-green-800'
+                    : getAdmissionTitle(chanceMeMutation.data.aiAnalysis).includes('Average')
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  {getAdmissionTitle(chanceMeMutation.data.aiAnalysis)}
+                </span>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div
