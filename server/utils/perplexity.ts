@@ -36,8 +36,8 @@ async function getPerplexityResponse(messages: ChatCompletionMessage[]): Promise
           },
           ...messages
         ],
-        temperature: 0.3, // Lower temperature for more focused, factual responses
-        max_tokens: 500, // Increased token limit for more detailed responses
+        temperature: 0.3,
+        max_tokens: 500,
         top_p: 0.9,
         stream: false
       }),
@@ -62,7 +62,6 @@ export async function generateCollegeResponse(
   userMessage: string
 ): Promise<string> {
   try {
-    // Enhanced context for better college-specific responses
     const messages: ChatCompletionMessage[] = [
       {
         role: 'user',
@@ -74,5 +73,50 @@ export async function generateCollegeResponse(
   } catch (error) {
     console.error('Error generating college response:', error);
     return 'I apologize, but I am unable to provide information about this college at the moment. Please check the official college website or try again later.';
+  }
+}
+
+export async function analyzeAdmissionChances(
+  schoolName: string,
+  profile: {
+    gpa: number;
+    sat?: number;
+    act?: number;
+    extracurriculars: string;
+    essays: string;
+  }
+): Promise<string> {
+  try {
+    const messages: ChatCompletionMessage[] = [
+      {
+        role: 'user',
+        content: `Please analyze admission chances for ${schoolName} with the following student profile:
+
+GPA: ${profile.gpa}
+${profile.sat ? `SAT: ${profile.sat}` : ''}
+${profile.act ? `ACT: ${profile.act}` : ''}
+
+Extracurricular Activities:
+${profile.extracurriculars}
+
+Essays and Personal Statement Summary:
+${profile.essays}
+
+Please provide a detailed analysis including:
+1. Academic fit analysis (GPA and test scores comparison with typical admits)
+2. Extracurricular activities evaluation
+3. Essay/personal statement assessment
+4. Overall admission chances
+5. Specific recommendations to improve the application
+6. Any unique factors or programs that might affect admission
+
+Format the response in clear sections with bullet points where appropriate.`
+      }
+    ];
+
+    return await getPerplexityResponse(messages);
+  } catch (error) {
+    console.error('Error analyzing admission chances:', error);
+    return 'I apologize, but I am unable to analyze admission chances at the moment. Please try again later.';
   }
 }

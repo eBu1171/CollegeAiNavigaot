@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { db } from "@db";
 import { schools, userSchools, chanceMe, messages, type User } from "@db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { generateCollegeResponse } from "./utils/perplexity";
+import { generateCollegeResponse, analyzeAdmissionChances } from "./utils/perplexity";
 
 export function registerRoutes(app: Express): Server {
   // School routes
@@ -178,60 +178,28 @@ export function registerRoutes(app: Express): Server {
     try {
       const { schoolId, gpa, sat, act, extracurriculars, essays } = req.body;
 
-      // Calculate admission chances based on provided data
-      let aiAnalysis = "Based on your profile:\n\n";
+      // Get school information
+      const [school] = await db
+        .select()
+        .from(schools)
+        .where(eq(schools.id, schoolId))
+        .limit(1);
 
-      // GPA Analysis
-      if (gpa >= 3.8) {
-        aiAnalysis += "- Your GPA is excellent and well above average\n";
-      } else if (gpa >= 3.5) {
-        aiAnalysis += "- Your GPA is strong and competitive\n";
-      } else {
-        aiAnalysis += "- Consider explaining any circumstances affecting your GPA in your essays\n";
+      if (!school) {
+        return res.status(404).json({ error: "School not found" });
       }
 
-      // Test Scores Analysis
-      if (sat) {
-        if (parseInt(sat) >= 1500) {
-          aiAnalysis += "- Your SAT score is exceptional\n";
-        } else if (parseInt(sat) >= 1400) {
-          aiAnalysis += "- Your SAT score is competitive\n";
+      // Generate AI analysis using Perplexity
+      const aiAnalysis = await analyzeAdmissionChances(
+        school.name,
+        {
+          gpa: parseFloat(gpa),
+          sat: sat ? parseInt(sat) : undefined,
+          act: act ? parseInt(act) : undefined,
+          extracurriculars,
+          essays,
         }
-      }
-
-      if (act) {
-        if (parseInt(act) >= 33) {
-          aiAnalysis += "- Your ACT score is exceptional\n";
-        } else if (parseInt(act) >= 30) {
-          aiAnalysis += "- Your ACT score is competitive\n";
-        }
-      }
-
-      // Extracurricular Analysis
-      const ecKeywords = ['leadership', 'volunteer', 'research', 'internship', 'award'];
-      let ecScore = 0;
-      ecKeywords.forEach(keyword => {
-        if (extracurriculars.toLowerCase().includes(keyword)) ecScore++;
-      });
-
-      if (ecScore >= 3) {
-        aiAnalysis += "- Your extracurricular activities show strong leadership and initiative\n";
-      } else {
-        aiAnalysis += "- Consider highlighting specific achievements in your activities\n";
-      }
-
-      // Essays Analysis
-      const essayKeywords = ['passion', 'growth', 'challenge', 'overcome', 'learn'];
-      let essayScore = 0;
-      essayKeywords.forEach(keyword => {
-        if (essays.toLowerCase().includes(keyword)) essayScore++;
-      });
-
-      if (essayScore >= 3) {
-        aiAnalysis += "- Your essays effectively communicate personal growth and experiences\n";
-      } else {
-        aiAnalysis += "- Consider incorporating more personal reflection in your essays\n";
-      }
+      );
 
       const [entry] = await db
         .insert(chanceMe)
@@ -247,8 +215,9 @@ export function registerRoutes(app: Express): Server {
         })
         .returning();
 
-      res.json(entry);
+      res.json({ ...entry, aiAnalysis });
     } catch (error) {
+      console.error('ChanceMe error:', error);
       res.status(500).json({ error: "Failed to process ChanceMe request" });
     }
   });
