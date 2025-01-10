@@ -1,12 +1,18 @@
-import { useState, useRef, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Send, School as SchoolIcon } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import {
+  MessageSquare,
+  Send,
+  Loader2,
+  ChevronRight,
+  School as SchoolIcon,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 
 type Message = {
   id: number;
@@ -25,49 +31,19 @@ type School = {
 export default function Chat() {
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [messageInput, setMessageInput] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  const { data: userStats, isLoading: loadingSchools } = useQuery<{ schools: School[] }>({
+  // Get user's schools
+  const { data: userStats } = useQuery<{ schools: School[] }>({
     queryKey: ["/api/user/stats"],
   });
 
+  // Get chat messages for selected school
   const { data: messages = [], isLoading: loadingMessages } = useQuery<Message[]>({
     queryKey: ["/api/chat", selectedSchool?.id],
     enabled: !!selectedSchool,
-  });
-
-  const sendMessageMutation = useMutation({
-    mutationFn: async (content: string) => {
-      if (!selectedSchool) {
-        throw new Error("Please select a school first");
-      }
-
-      const response = await fetch(`/api/chat/${selectedSchool.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ content }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Failed to send message");
-      }
-
-      return response.json();
-    },
-    onSuccess: (newMessages) => {
-      // Optimistically update the messages
-      queryClient.setQueryData(
-        ["/api/chat", selectedSchool?.id],
-        (oldMessages: Message[] = []) => [...oldMessages, ...newMessages].sort((a, b) => 
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        )
-      );
-      setMessageInput("");
-    },
     onError: (error: Error) => {
       toast({
         title: "Error",
@@ -77,172 +53,172 @@ export default function Chat() {
     },
   });
 
-  const handleSendMessage = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!messageInput.trim() || sendMessageMutation.isPending) return;
-    sendMessageMutation.mutate(messageInput);
+  // Send message mutation
+  const sendMessage = useMutation({
+    mutationFn: async (content: string) => {
+      if (!selectedSchool) throw new Error("Please select a school first");
+
+      const response = await fetch(`/api/chat/${selectedSchool.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      return response.json();
+    },
+    onSuccess: (newMessages) => {
+      queryClient.setQueryData(
+        ["/api/chat", selectedSchool?.id],
+        (oldMessages: Message[] = []) => [...oldMessages, ...newMessages]
+      );
+      setMessageInput("");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to send message",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handle message submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!messageInput.trim() || !selectedSchool || sendMessage.isPending) return;
+    sendMessage.mutate(messageInput);
   };
 
   // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+  useRef(() => {
+    if (messagesContainerRef.current) {
+      const scrollContainer = messagesContainerRef.current;
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
     }
   }, [messages]);
 
   return (
-    <div className="container mx-auto px-4 py-8 h-[calc(100vh-2rem)]">
-      <div className="grid grid-cols-12 gap-8 h-full">
-        {/* School List */}
-        <div className="col-span-3">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <SchoolIcon className="h-5 w-5" />
-                My Schools
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loadingSchools ? (
-                <div className="flex justify-center py-4">
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                </div>
-              ) : userStats?.schools && userStats.schools.length > 0 ? (
-                <ScrollArea className="h-[calc(100vh-12rem)]">
-                  <div className="space-y-2">
-                    {userStats.schools.map((school) => (
-                      <Button
-                        key={school.id}
-                        variant={
-                          selectedSchool?.id === school.id
-                            ? "secondary"
-                            : "ghost"
-                        }
-                        className="w-full justify-start"
-                        onClick={() => setSelectedSchool(school)}
-                      >
-                        <div className="text-left">
-                          <div>{school.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {school.location}
-                          </div>
-                        </div>
-                      </Button>
-                    ))}
+    <div className="container mx-auto p-4 h-[calc(100vh-4rem)] flex gap-4">
+      {/* Schools Sidebar */}
+      <Card className="w-64">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <SchoolIcon className="h-5 w-5" />
+            My Schools
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-[calc(100vh-12rem)]">
+            <div className="space-y-2">
+              {userStats?.schools?.map((school) => (
+                <Button
+                  key={school.id}
+                  variant={selectedSchool?.id === school.id ? "secondary" : "ghost"}
+                  className="w-full justify-between"
+                  onClick={() => setSelectedSchool(school)}
+                >
+                  <div className="text-left">
+                    <div className="font-medium">{school.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {school.location}
+                    </div>
                   </div>
-                </ScrollArea>
-              ) : (
-                <div className="text-center py-4 text-muted-foreground">
-                  <p>No schools added yet.</p>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              ))}
+              {!userStats?.schools?.length && (
+                <div className="text-center text-sm text-muted-foreground">
+                  <p>No schools added yet</p>
                   <Button
                     variant="link"
-                    onClick={() => window.location.href = '/find-school'}
                     className="mt-2"
+                    onClick={() => (window.location.href = "/find-school")}
                   >
                     Add schools to start chatting
                   </Button>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
 
-        {/* Chat Area */}
-        <div className="col-span-9">
-          <Card className="h-full flex flex-col">
-            <CardHeader>
-              <CardTitle>
-                {selectedSchool
-                  ? `Chat about ${selectedSchool.name}`
-                  : "Select a school to start chatting"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col">
-              {/* Messages */}
-              <ScrollArea ref={scrollRef} className="flex-1 mb-4">
-                <div className="space-y-4 pr-4">
-                  {loadingMessages ? (
-                    <div className="flex justify-center py-4">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </div>
-                  ) : messages.length > 0 ? (
-                    <AnimatePresence initial={false}>
-                      {[...messages].reverse().map((message) => (
-                        <motion.div
-                          key={message.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -20 }}
-                          transition={{ duration: 0.2 }}
-                          className={`flex ${
-                            message.isAI ? "justify-start" : "justify-end"
+      {/* Chat Area */}
+      <Card className="flex-1">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5" />
+            {selectedSchool ? `Chat about ${selectedSchool.name}` : "Select a school"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="flex flex-col h-[calc(100vh-16rem)]">
+            {/* Messages */}
+            <ScrollArea
+              ref={messagesContainerRef}
+              className="flex-1 p-4"
+            >
+              <div className="space-y-4">
+                {loadingMessages ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : messages.length > 0 ? (
+                  <AnimatePresence initial={false}>
+                    {messages.map((message, index) => (
+                      <motion.div
+                        key={message.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className={`flex ${message.isAI ? "justify-start" : "justify-end"}`}
+                      >
+                        <div
+                          className={`max-w-[80%] px-4 py-2 rounded-lg ${
+                            message.isAI
+                              ? "bg-muted text-foreground"
+                              : "bg-primary text-primary-foreground"
                           }`}
                         >
-                          <div
-                            className={`max-w-[70%] p-4 rounded-lg shadow-sm ${
-                              message.isAI
-                                ? "bg-muted"
-                                : "bg-primary text-primary-foreground"
-                            }`}
-                          >
-                            <p className="leading-relaxed whitespace-pre-wrap">
-                              {message.content}
-                            </p>
-                            <span className="text-xs opacity-70 mt-2 block">
-                              {new Date(message.createdAt).toLocaleTimeString()}
-                            </span>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  ) : selectedSchool ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      Start chatting about {selectedSchool.name}
-                    </div>
-                  ) : null}
-                  {sendMessageMutation.isPending && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex justify-start"
-                    >
-                      <div className="max-w-[70%] p-4 rounded-lg shadow-sm bg-muted">
-                        <div className="flex items-center space-x-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span className="text-sm">AI is thinking...</span>
+                          <p className="whitespace-pre-wrap">{message.content}</p>
+                          <span className="text-xs mt-1 block opacity-70">
+                            {new Date(message.createdAt).toLocaleTimeString()}
+                          </span>
                         </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </div>
-              </ScrollArea>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                ) : selectedSchool ? (
+                  <div className="text-center text-muted-foreground">
+                    Start chatting about {selectedSchool.name}
+                  </div>
+                ) : (
+                  <div className="text-center text-muted-foreground">
+                    Select a school to start chatting
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
 
-              {/* Input */}
-              <form onSubmit={handleSendMessage} className="flex gap-2">
+            {/* Input Form */}
+            <div className="p-4 border-t">
+              <form onSubmit={handleSubmit} className="flex gap-2">
                 <Input
-                  placeholder={
-                    selectedSchool
-                      ? "Type your message..."
-                      : "Select a school first"
-                  }
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
-                  disabled={!selectedSchool || sendMessageMutation.isPending}
-                  className="flex-1"
+                  placeholder={selectedSchool ? "Type your message..." : "Select a school"}
+                  disabled={!selectedSchool || sendMessage.isPending}
                 />
                 <Button
                   type="submit"
-                  disabled={
-                    !selectedSchool ||
-                    !messageInput.trim() ||
-                    sendMessageMutation.isPending
-                  }
-                  className="w-24"
+                  disabled={!selectedSchool || !messageInput.trim() || sendMessage.isPending}
                 >
-                  {sendMessageMutation.isPending ? (
+                  {sendMessage.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>
@@ -252,10 +228,10 @@ export default function Chat() {
                   )}
                 </Button>
               </form>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

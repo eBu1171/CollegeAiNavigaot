@@ -57,25 +57,6 @@ async function getPerplexityResponse(messages: ChatCompletionMessage[]): Promise
   }
 }
 
-export async function generateCollegeResponse(
-  schoolName: string,
-  userMessage: string
-): Promise<string> {
-  try {
-    const messages: ChatCompletionMessage[] = [
-      {
-        role: 'user',
-        content: `Regarding ${schoolName}: ${userMessage}\n\nPlease provide specific, accurate information about this college, including relevant statistics, programs, or requirements where applicable.`
-      }
-    ];
-
-    return await getPerplexityResponse(messages);
-  } catch (error) {
-    console.error('Error generating college response:', error);
-    return 'I apologize, but I am unable to provide information about this college at the moment. Please check the official college website or try again later.';
-  }
-}
-
 export async function analyzeAdmissionChances(
   schoolName: string,
   profile: {

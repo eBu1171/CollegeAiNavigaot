@@ -53,145 +53,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Chat routes
-  app.get("/api/chat/:schoolId", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    try {
-      const schoolId = parseInt(req.params.schoolId);
-      if (isNaN(schoolId)) {
-        return res.status(400).send("Invalid school ID");
-      }
-
-      console.log("Fetching messages for school:", schoolId); // Debug log
-
-      // First verify if the school exists
-      const [school] = await db
-        .select()
-        .from(schools)
-        .where(eq(schools.id, schoolId))
-        .limit(1);
-
-      if (!school) {
-        return res.status(404).send("School not found");
-      }
-
-      // Then check if user has access to this school
-      const [userSchool] = await db
-        .select()
-        .from(userSchools)
-        .where(
-          and(
-            eq(userSchools.schoolId, schoolId),
-            eq(userSchools.userId, (req.user as User).id)
-          )
-        )
-        .limit(1);
-
-      if (!userSchool) {
-        return res.status(403).send("You need to add this school to your list first");
-      }
-
-      const chatMessages = await db
-        .select()
-        .from(messages)
-        .where(
-          and(
-            eq(messages.schoolId, schoolId),
-            eq(messages.userId, (req.user as User).id)
-          )
-        )
-        .orderBy(desc(messages.createdAt));
-
-      res.json(chatMessages);
-    } catch (error) {
-      console.error('Chat fetch error:', error);
-      res.status(500).json({ error: "Failed to fetch messages" });
-    }
-  });
-
-  app.post("/api/chat/:schoolId", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    try {
-      const schoolId = parseInt(req.params.schoolId);
-      if (isNaN(schoolId)) {
-        return res.status(400).send("Invalid school ID");
-      }
-
-      const { content } = req.body;
-      if (!content || typeof content !== 'string') {
-        return res.status(400).send("Message content is required");
-      }
-
-      console.log("Sending message for school:", schoolId); // Debug log
-
-      // First verify if the school exists
-      const [school] = await db
-        .select()
-        .from(schools)
-        .where(eq(schools.id, schoolId))
-        .limit(1);
-
-      if (!school) {
-        return res.status(404).send("School not found");
-      }
-
-      // Then check if user has access to this school
-      const [userSchool] = await db
-        .select()
-        .from(userSchools)
-        .where(
-          and(
-            eq(userSchools.schoolId, schoolId),
-            eq(userSchools.userId, (req.user as User).id)
-          )
-        )
-        .limit(1);
-
-      if (!userSchool) {
-        return res.status(403).send("You need to add this school to your list first");
-      }
-
-      // Insert user message
-      const [userMessage] = await db
-        .insert(messages)
-        .values({
-          userId: (req.user as User).id,
-          schoolId,
-          content,
-          isAI: false,
-        })
-        .returning();
-
-      // Generate AI response using Perplexity
-      const aiResponse = await generateCollegeResponse(
-        school.name,
-        content
-      );
-
-      // Insert AI response
-      const [aiMessage] = await db
-        .insert(messages)
-        .values({
-          userId: (req.user as User).id,
-          schoolId,
-          content: aiResponse,
-          isAI: true,
-        })
-        .returning();
-
-      res.json([userMessage, aiMessage]);
-    } catch (error) {
-      console.error('Chat message error:', error);
-      res.status(500).json({ error: "Failed to process chat message" });
-    }
-  });
-
   // School routes
   app.get("/api/schools", async (req, res) => {
     try {
@@ -201,6 +62,7 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ error: "Failed to fetch schools" });
     }
   });
+
   app.post("/api/schools/search", async (req, res) => {
     try {
       const { location, major, satScore, gpa } = req.body;
@@ -270,7 +132,6 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ error: "Failed to search schools" });
     }
   });
-
 
   // ChanceMe routes
   app.post("/api/chance-me", async (req, res) => {
@@ -378,6 +239,142 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Dashboard error:', error);
       res.status(500).json({ error: "Failed to fetch user statistics" });
+    }
+  });
+
+  // Timeline routes
+  app.get("/api/timeline/schools", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const userSchoolsData = await db
+        .select({
+          id: userSchools.id,
+          userId: userSchools.userId,
+          schoolId: userSchools.schoolId,
+          name: schools.name,
+          location: schools.location,
+          deadlines: applicationDeadlines,
+        })
+        .from(userSchools)
+        .leftJoin(schools, eq(userSchools.schoolId, schools.id))
+        .leftJoin(applicationDeadlines, eq(schools.id, applicationDeadlines.schoolId))
+        .where(eq(userSchools.userId, (req.user as User).id));
+
+      // Transform the data to match the frontend expectations
+      const transformedData = userSchoolsData.map((school) => ({
+        id: school.schoolId,
+        name: school.name,
+        location: school.location,
+        deadlines: {
+          earlyAction: school.deadlines?.earlyAction instanceof Date ? school.deadlines.earlyAction.toISOString() : null,
+          earlyDecision: school.deadlines?.earlyDecision instanceof Date ? school.deadlines.earlyDecision.toISOString() : null,
+          regularDecision: school.deadlines?.regularDecision instanceof Date ? school.deadlines.regularDecision.toISOString() : null,
+          financialAid: school.deadlines?.financialAid instanceof Date ? school.deadlines.financialAid.toISOString() : null,
+          scholarship: school.deadlines?.scholarship instanceof Date ? school.deadlines.scholarship.toISOString() : null,
+        },
+      }));
+
+      res.json(transformedData);
+    } catch (error) {
+      console.error('Timeline schools error:', error);
+      res.status(500).json({ error: "Failed to fetch schools timeline" });
+    }
+  });
+
+  app.get("/api/timeline/checklist/:schoolId", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const schoolId = parseInt(req.params.schoolId);
+      if (isNaN(schoolId)) {
+        return res.status(400).send("Invalid school ID");
+      }
+
+      // Get user's checklist items for this school
+      const userItems = await db
+        .select({
+          id: userChecklist.id,
+          name: checklistItems.name,
+          description: checklistItems.description,
+          category: checklistItems.category,
+          completed: userChecklist.completed,
+          completedAt: userChecklist.completedAt,
+          dueDate: userChecklist.dueDate,
+        })
+        .from(userChecklist)
+        .leftJoin(checklistItems, eq(userChecklist.itemId, checklistItems.id))
+        .where(
+          and(
+            eq(userChecklist.userId, (req.user as User).id),
+            eq(userChecklist.schoolId, schoolId)
+          )
+        );
+
+      // If no items exist for this user/school combination, create default ones
+      if (!userItems.length) {
+        // Get generic checklist items
+        const genericItems = await db
+          .select()
+          .from(checklistItems)
+          .where(eq(checklistItems.isGeneric, true));
+
+        // Get school deadlines to calculate due dates
+        const [schoolDeadlines] = await db
+          .select()
+          .from(applicationDeadlines)
+          .where(eq(applicationDeadlines.schoolId, schoolId))
+          .limit(1);
+
+        if (!schoolDeadlines?.regularDecision) {
+          return res.status(404).send("School deadlines not found");
+        }
+
+        // Create user checklist items
+        const newItems = await Promise.all(
+          genericItems.map(async (item) => {
+            const dueDate = new Date(schoolDeadlines.regularDecision);
+            dueDate.setDate(
+              dueDate.getDate() - (item.daysBeforeDeadline || 14)
+            );
+
+            const [userItem] = await db
+              .insert(userChecklist)
+              .values({
+                userId: (req.user as User).id,
+                schoolId,
+                itemId: item.id,
+                dueDate: dueDate,
+                completed: false,
+              })
+              .returning();
+
+            return {
+              id: userItem.id,
+              name: item.name,
+              description: item.description,
+              category: item.category,
+              completed: false,
+              dueDate: dueDate.toISOString(),
+            };
+          })
+        );
+
+        return res.json(newItems);
+      }
+
+      res.json(userItems.map(item => ({
+        ...item,
+        dueDate: item.dueDate instanceof Date ? item.dueDate.toISOString() : item.dueDate,
+        completedAt: item.completedAt instanceof Date ? item.completedAt.toISOString() : item.completedAt,
+      })));
+    } catch (error) {
+      console.error('Checklist fetch error:', error);
+      res.status(500).json({ error: "Failed to fetch checklist" });
     }
   });
 
@@ -699,141 +696,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Timeline routes
-  app.get("/api/timeline/schools", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    try {
-      const userSchoolsData = await db
-        .select({
-          id: userSchools.id,
-          userId: userSchools.userId,
-          schoolId: userSchools.schoolId,
-          name: schools.name,
-          location: schools.location,
-          deadlines: applicationDeadlines,
-        })
-        .from(userSchools)
-        .leftJoin(schools, eq(userSchools.schoolId, schools.id))
-        .leftJoin(applicationDeadlines, eq(schools.id, applicationDeadlines.schoolId))
-        .where(eq(userSchools.userId, (req.user as User).id));
-
-      // Transform the data to match the frontend expectations
-      const transformedData = userSchoolsData.map((school) => ({
-        id: school.schoolId,
-        name: school.name,
-        location: school.location,
-        deadlines: {
-          earlyAction: school.deadlines?.earlyAction instanceof Date ? school.deadlines.earlyAction.toISOString() : null,
-          earlyDecision: school.deadlines?.earlyDecision instanceof Date ? school.deadlines.earlyDecision.toISOString() : null,
-          regularDecision: school.deadlines?.regularDecision instanceof Date ? school.deadlines.regularDecision.toISOString() : null,
-          financialAid: school.deadlines?.financialAid instanceof Date ? school.deadlines.financialAid.toISOString() : null,
-          scholarship: school.deadlines?.scholarship instanceof Date ? school.deadlines.scholarship.toISOString() : null,
-        },
-      }));
-
-      res.json(transformedData);
-    } catch (error) {
-      console.error('Timeline schools error:', error);
-      res.status(500).json({ error: "Failed to fetch schools timeline" });
-    }
-  });
-
-  app.get("/api/timeline/checklist/:schoolId", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    try {
-      const schoolId = parseInt(req.params.schoolId);
-      if (isNaN(schoolId)) {
-        return res.status(400).send("Invalid school ID");
-      }
-
-      // Get user's checklist items for this school
-      const userItems = await db
-        .select({
-          id: userChecklist.id,
-          name: checklistItems.name,
-          description: checklistItems.description,
-          category: checklistItems.category,
-          completed: userChecklist.completed,
-          completedAt: userChecklist.completedAt,
-          dueDate: userChecklist.dueDate,
-        })
-        .from(userChecklist)
-        .leftJoin(checklistItems, eq(userChecklist.itemId, checklistItems.id))
-        .where(
-          and(
-            eq(userChecklist.userId, (req.user as User).id),
-            eq(userChecklist.schoolId, schoolId)
-          )
-        );
-
-      // If no items exist for this user/school combination, create default ones
-      if (!userItems.length) {
-        // Get generic checklist items
-        const genericItems = await db
-          .select()
-          .from(checklistItems)
-          .where(eq(checklistItems.isGeneric, true));
-
-        // Get school deadlines to calculate due dates
-        const [schoolDeadlines] = await db
-          .select()
-          .from(applicationDeadlines)
-          .where(eq(applicationDeadlines.schoolId, schoolId))
-          .limit(1);
-
-        if (!schoolDeadlines?.regularDecision) {
-          return res.status(404).send("School deadlines not found");
-        }
-
-        // Create user checklist items
-        const newItems = await Promise.all(
-          genericItems.map(async (item) => {
-            const dueDate = new Date(schoolDeadlines.regularDecision);
-            dueDate.setDate(
-              dueDate.getDate() - (item.daysBeforeDeadline || 14)
-            );
-
-            const [userItem] = await db
-              .insert(userChecklist)
-              .values({
-                userId: (req.user as User).id,
-                schoolId,
-                itemId: item.id,
-                dueDate: dueDate,
-                completed: false,
-              })
-              .returning();
-
-            return {
-              id: userItem.id,
-              name: item.name,
-              description: item.description,
-              category: item.category,
-              completed: false,
-              dueDate: dueDate.toISOString(),
-            };
-          })
-        );
-
-        return res.json(newItems);
-      }
-
-      res.json(userItems.map(item => ({
-        ...item,
-        dueDate: item.dueDate instanceof Date ? item.dueDate.toISOString() : item.dueDate,
-        completedAt: item.completedAt instanceof Date ? item.completedAt.toISOString() : item.completedAt,
-      })));
-    } catch (error) {
-      console.error('Checklist fetch error:', error);
-      res.status(500).json({ error: "Failed to fetch checklist" });
-    }
-  });
 
   const httpServer = createServer(app);
   return httpServer;
