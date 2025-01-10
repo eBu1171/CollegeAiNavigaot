@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,9 +31,9 @@ type School = {
 export default function Chat() {
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [messageInput, setMessageInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Get user's schools
   const { data: userStats } = useQuery<{ schools: School[] }>({
@@ -46,7 +46,7 @@ export default function Chat() {
     enabled: !!selectedSchool,
     onError: (error: Error) => {
       toast({
-        title: "Error",
+        title: "Error loading messages",
         description: error.message,
         variant: "destructive",
       });
@@ -56,17 +56,27 @@ export default function Chat() {
   // Send message mutation
   const sendMessage = useMutation({
     mutationFn: async (content: string) => {
-      if (!selectedSchool) throw new Error("Please select a school first");
+      if (!selectedSchool) {
+        throw new Error("Please select a school first");
+      }
 
       const response = await fetch(`/api/chat/${selectedSchool.id}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         credentials: "include",
         body: JSON.stringify({ content }),
       });
 
       if (!response.ok) {
-        throw new Error(await response.text());
+        const text = await response.text();
+        try {
+          const errorData = JSON.parse(text);
+          throw new Error(errorData.error || "Failed to send message");
+        } catch {
+          throw new Error(text || "Failed to send message");
+        }
       }
 
       return response.json();
@@ -87,20 +97,16 @@ export default function Chat() {
     },
   });
 
-  // Handle message submission
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageInput.trim() || !selectedSchool || sendMessage.isPending) return;
     sendMessage.mutate(messageInput);
   };
-
-  // Auto-scroll to bottom when new messages arrive
-  useRef(() => {
-    if (messagesContainerRef.current) {
-      const scrollContainer = messagesContainerRef.current;
-      scrollContainer.scrollTop = scrollContainer.scrollHeight;
-    }
-  }, [messages]);
 
   return (
     <div className="container mx-auto p-4 h-[calc(100vh-4rem)] flex gap-4">
@@ -137,7 +143,9 @@ export default function Chat() {
                   <Button
                     variant="link"
                     className="mt-2"
-                    onClick={() => (window.location.href = "/find-school")}
+                    onClick={() => {
+                      window.location.href = "/find-school";
+                    }}
                   >
                     Add schools to start chatting
                   </Button>
@@ -159,10 +167,7 @@ export default function Chat() {
         <CardContent className="p-0">
           <div className="flex flex-col h-[calc(100vh-16rem)]">
             {/* Messages */}
-            <ScrollArea
-              ref={messagesContainerRef}
-              className="flex-1 p-4"
-            >
+            <ScrollArea className="flex-1 p-4">
               <div className="space-y-4">
                 {loadingMessages ? (
                   <div className="flex justify-center py-4">
@@ -170,12 +175,12 @@ export default function Chat() {
                   </div>
                 ) : messages.length > 0 ? (
                   <AnimatePresence initial={false}>
-                    {messages.map((message, index) => (
+                    {messages.map((message) => (
                       <motion.div
                         key={message.id}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.1 }}
+                        transition={{ duration: 0.2 }}
                         className={`flex ${message.isAI ? "justify-start" : "justify-end"}`}
                       >
                         <div
@@ -202,6 +207,7 @@ export default function Chat() {
                     Select a school to start chatting
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
 

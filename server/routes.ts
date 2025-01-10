@@ -2,16 +2,146 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { db } from "@db";
 import { schools, userSchools, chanceMe, messages, type User, users } from "@db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
-import { generateCollegeResponse, analyzeAdmissionChances } from "./utils/perplexity";
-import { quests, achievements, userQuests, userAchievements } from "@db/schema";
-import { 
-  applicationDeadlines,
-  checklistItems,
-  userChecklist,
-} from "@db/schema";
+import { eq, and, desc } from "drizzle-orm";
+import { analyzeAdmissionChances } from "./utils/perplexity";
 
 export function registerRoutes(app: Express): Server {
+  // Chat routes
+  app.get("/api/chat/:schoolId", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    try {
+      const schoolId = parseInt(req.params.schoolId);
+      if (isNaN(schoolId)) {
+        return res.status(400).json({ error: "Invalid school ID" });
+      }
+
+      // First verify if the school exists
+      const [school] = await db
+        .select()
+        .from(schools)
+        .where(eq(schools.id, schoolId))
+        .limit(1);
+
+      if (!school) {
+        return res.status(404).json({ error: "School not found" });
+      }
+
+      // Then check if user has access to this school
+      const [userSchool] = await db
+        .select()
+        .from(userSchools)
+        .where(
+          and(
+            eq(userSchools.schoolId, schoolId),
+            eq(userSchools.userId, (req.user as User).id)
+          )
+        )
+        .limit(1);
+
+      if (!userSchool) {
+        return res.status(403).json({ error: "You need to add this school to your list first" });
+      }
+
+      const chatMessages = await db
+        .select()
+        .from(messages)
+        .where(
+          and(
+            eq(messages.schoolId, schoolId),
+            eq(messages.userId, (req.user as User).id)
+          )
+        )
+        .orderBy(desc(messages.createdAt));
+
+      res.json(chatMessages);
+    } catch (error) {
+      console.error('Chat fetch error:', error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  app.post("/api/chat/:schoolId", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    try {
+      const schoolId = parseInt(req.params.schoolId);
+      if (isNaN(schoolId)) {
+        return res.status(400).json({ error: "Invalid school ID" });
+      }
+
+      const { content } = req.body;
+      if (!content || typeof content !== 'string') {
+        return res.status(400).json({ error: "Message content is required" });
+      }
+
+      // First verify if the school exists
+      const [school] = await db
+        .select()
+        .from(schools)
+        .where(eq(schools.id, schoolId))
+        .limit(1);
+
+      if (!school) {
+        return res.status(404).json({ error: "School not found" });
+      }
+
+      // Then check if user has access to this school
+      const [userSchool] = await db
+        .select()
+        .from(userSchools)
+        .where(
+          and(
+            eq(userSchools.schoolId, schoolId),
+            eq(userSchools.userId, (req.user as User).id)
+          )
+        )
+        .limit(1);
+
+      if (!userSchool) {
+        return res.status(403).json({ error: "You need to add this school to your list first" });
+      }
+
+      // Insert user message
+      const [userMessage] = await db
+        .insert(messages)
+        .values({
+          userId: (req.user as User).id,
+          schoolId,
+          content,
+          isAI: false,
+        })
+        .returning();
+
+      // Generate AI response using Perplexity
+      const aiResponse = await analyzeAdmissionChances(school.name, {
+        gpa: school.averageGPA || 3.5,
+        extracurriculars: content,
+        essays: "",
+      });
+
+      // Insert AI response
+      const [aiMessage] = await db
+        .insert(messages)
+        .values({
+          userId: (req.user as User).id,
+          schoolId,
+          content: aiResponse,
+          isAI: true,
+        })
+        .returning();
+
+      res.json([userMessage, aiMessage]);
+    } catch (error) {
+      console.error('Chat message error:', error);
+      res.status(500).json({ error: "Failed to process chat message" });
+    }
+  });
+
   // User-School relationship routes
   app.post("/api/user-schools", async (req, res) => {
     if (!req.isAuthenticated()) {
