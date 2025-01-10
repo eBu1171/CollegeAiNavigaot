@@ -511,6 +511,189 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Learning Path - Quest Interaction Routes
+  app.post("/api/learning-path/quests/:questId/start", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const questId = parseInt(req.params.questId);
+      if (isNaN(questId)) {
+        return res.status(400).send("Invalid quest ID");
+      }
+
+      // Check if quest exists
+      const [quest] = await db
+        .select()
+        .from(quests)
+        .where(eq(quests.id, questId))
+        .limit(1);
+
+      if (!quest) {
+        return res.status(404).send("Quest not found");
+      }
+
+      // Check if user already started this quest
+      const [existingUserQuest] = await db
+        .select()
+        .from(userQuests)
+        .where(
+          and(
+            eq(userQuests.userId, (req.user as User).id),
+            eq(userQuests.questId, questId)
+          )
+        )
+        .limit(1);
+
+      if (existingUserQuest) {
+        return res.status(400).send("Quest already started");
+      }
+
+      // Start the quest
+      const [userQuest] = await db
+        .insert(userQuests)
+        .values({
+          userId: (req.user as User).id,
+          questId,
+          status: "in_progress",
+          progress: {
+            "0": false,
+            "1": false,
+            "2": false,
+          },
+        })
+        .returning();
+
+      res.json(userQuest);
+    } catch (error) {
+      console.error("Start quest error:", error);
+      res.status(500).json({ error: "Failed to start quest" });
+    }
+  });
+
+  app.post("/api/learning-path/quests/:questId/tasks/:taskId", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const questId = parseInt(req.params.questId);
+      const taskId = req.params.taskId;
+
+      if (isNaN(questId)) {
+        return res.status(400).send("Invalid quest ID");
+      }
+
+      // Get user's quest progress
+      const [userQuest] = await db
+        .select()
+        .from(userQuests)
+        .where(
+          and(
+            eq(userQuests.userId, (req.user as User).id),
+            eq(userQuests.questId, questId)
+          )
+        )
+        .limit(1);
+
+      if (!userQuest) {
+        return res.status(404).send("Quest not found or not started");
+      }
+
+      // Update task completion
+      const progress = userQuest.progress as Record<string, boolean>;
+      progress[taskId] = true;
+
+      // Check if all tasks are completed
+      const isQuestCompleted = Object.values(progress).every(Boolean);
+
+      // Get quest points
+      const [quest] = await db
+        .select()
+        .from(quests)
+        .where(eq(quests.id, questId))
+        .limit(1);
+
+      // Update user quest progress
+      await db
+        .update(userQuests)
+        .set({
+          progress,
+          status: isQuestCompleted ? "completed" : "in_progress",
+          completedAt: isQuestCompleted ? new Date() : null,
+        })
+        .where(eq(userQuests.id, userQuest.id));
+
+      let response: any = { success: true };
+
+      if (isQuestCompleted) {
+        // Award points to user
+        const [updatedUser] = await db
+          .update(users)
+          .set({
+            totalPoints: sql`${users.totalPoints} + ${quest.points}`,
+          })
+          .where(eq(users.id, (req.user as User).id))
+          .returning({
+            totalPoints: users.totalPoints,
+            level: users.level,
+          });
+
+        // Check for level up (1000 points per level)
+        const newLevel = Math.floor(updatedUser.totalPoints / 1000) + 1;
+        if (newLevel > updatedUser.level) {
+          await db
+            .update(users)
+            .set({ level: newLevel })
+            .where(eq(users.id, (req.user as User).id));
+
+          response.levelUp = true;
+          response.newLevel = newLevel;
+        }
+
+        // Check for achievements
+        // For example: "Complete 5 quests" achievement
+        const [completedQuestsCount] = await db
+          .select({
+            count: sql<number>`count(*)::int`,
+          })
+          .from(userQuests)
+          .where(
+            and(
+              eq(userQuests.userId, (req.user as User).id),
+              eq(userQuests.status, "completed")
+            )
+          );
+
+        if (completedQuestsCount.count === 5) {
+          const [achievement] = await db
+            .select()
+            .from(achievements)
+            .where(eq(achievements.type, "quest_master"))
+            .limit(1);
+
+          if (achievement) {
+            const [userAchievement] = await db
+              .insert(userAchievements)
+              .values({
+                userId: (req.user as User).id,
+                achievementId: achievement.id,
+              })
+              .returning();
+
+            response.achievement = achievement;
+          }
+        }
+      }
+
+      res.json(response);
+    } catch (error) {
+      console.error("Complete task error:", error);
+      res.status(500).json({ error: "Failed to complete task" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

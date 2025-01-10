@@ -1,5 +1,5 @@
 import { useState, createElement } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -15,6 +15,8 @@ import {
   ArrowRight,
   Loader2,
   Lock,
+  Play,
+  Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
@@ -26,7 +28,7 @@ type Quest = {
   type: string;
   points: number;
   status: "not_started" | "in_progress" | "completed";
-  progress: number;
+  progress: number | { [taskId: string]: boolean };
 };
 
 type Achievement = {
@@ -53,7 +55,9 @@ type UserProgress = {
 
 export default function LearningPath() {
   const [selectedQuest, setSelectedQuest] = useState<Quest | null>(null);
+  const [activeQuest, setActiveQuest] = useState<Quest | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: progress, isLoading: loadingProgress } = useQuery<UserProgress>({
     queryKey: ["/api/learning-path/progress"],
@@ -93,11 +97,92 @@ export default function LearningPath() {
     }
   };
 
+  const startQuestMutation = useMutation({
+    mutationFn: async (questId: number) => {
+      const response = await fetch(`/api/learning-path/quests/${questId}/start`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/learning-path/quests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/learning-path/progress"] });
+      toast({
+        title: "Quest Started!",
+        description: "Good luck on your journey!",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const completeTaskMutation = useMutation({
+    mutationFn: async ({ questId, taskId }: { questId: number; taskId: string }) => {
+      const response = await fetch(
+        `/api/learning-path/quests/${questId}/tasks/${taskId}`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/learning-path/quests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/learning-path/progress"] });
+
+      if (data.achievement) {
+        toast({
+          title: "Achievement Unlocked! 🎉",
+          description: data.achievement.title,
+        });
+      }
+
+      if (data.levelUp) {
+        toast({
+          title: "Level Up! 🌟",
+          description: `Congratulations! You've reached level ${data.newLevel}!`,
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStartQuest = (quest: Quest) => {
+    startQuestMutation.mutate(quest.id);
+    setActiveQuest(quest);
+  };
+
+  const handleCompleteTask = (questId: number, taskId: string) => {
+    completeTaskMutation.mutate({ questId, taskId });
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">Learning Path</h1>
 
-      {/* Progress Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card>
           <CardContent className="pt-6">
@@ -168,11 +253,13 @@ export default function LearningPath() {
       </div>
 
       <div className="grid md:grid-cols-3 gap-8">
-        {/* Quests */}
         <div className="md:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Quests</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Trophy className="h-5 w-5" />
+                Quests
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[500px] pr-4">
@@ -196,6 +283,8 @@ export default function LearningPath() {
                                 className={`p-2 rounded-lg ${
                                   quest.status === "completed"
                                     ? "bg-green-100"
+                                    : quest.status === "in_progress"
+                                    ? "bg-yellow-100"
                                     : "bg-primary/10"
                                 }`}
                               >
@@ -232,16 +321,38 @@ export default function LearningPath() {
                                         : "Not Started"}
                                     </span>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => setSelectedQuest(quest)}
-                                  >
-                                    View Details
-                                    <ArrowRight className="h-4 w-4 ml-2" />
-                                  </Button>
+                                  <div className="flex gap-2">
+                                    {quest.status === "not_started" && (
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        className="gap-2"
+                                        onClick={() => handleStartQuest(quest)}
+                                        disabled={startQuestMutation.isPending}
+                                      >
+                                        <Play className="h-4 w-4" />
+                                        Start Quest
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                      onClick={() => setSelectedQuest(quest)}
+                                    >
+                                      View Details
+                                      <ArrowRight className="h-4 w-4 ml-2" />
+                                    </Button>
+                                  </div>
                                 </div>
+                                {quest.status === "in_progress" && typeof quest.progress === 'number' && (
+                                  <div className="mt-4">
+                                    <Progress value={quest.progress * 100} className="h-2" />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      {Math.round(quest.progress * 100)}% complete
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </CardContent>
@@ -259,7 +370,6 @@ export default function LearningPath() {
           </Card>
         </div>
 
-        {/* Achievements */}
         <div>
           <Card>
             <CardHeader>
@@ -329,6 +439,63 @@ export default function LearningPath() {
           </Card>
         </div>
       </div>
+
+      {activeQuest && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
+          <Card className="w-full max-w-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                {activeQuest.title}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p>{activeQuest.description}</p>
+
+              <div className="space-y-2">
+                {activeQuest.progress && typeof activeQuest.progress === 'object' && Object.entries(activeQuest.progress).map(([taskId, completed]) => (
+                  <div
+                    key={taskId}
+                    className="flex items-center justify-between p-2 rounded-lg bg-muted"
+                  >
+                    <span className="flex items-center gap-2">
+                      {completed ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground" />
+                      )}
+                      Task {parseInt(taskId) + 1}
+                    </span>
+                    {!completed && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleCompleteTask(activeQuest.id, taskId)}
+                        disabled={completeTaskMutation.isPending}
+                      >
+                        Complete
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  variant="ghost"
+                  onClick={() => setActiveQuest(null)}
+                >
+                  Close
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
     </div>
   );
 }
