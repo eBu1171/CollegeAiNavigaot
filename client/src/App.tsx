@@ -8,6 +8,7 @@ import FindSchool from "./pages/FindSchool";
 import Chat from "./pages/Chat";
 import ChanceMe from "./pages/ChanceMe";
 import Dashboard from "./pages/Dashboard";
+import LearningPath from "./pages/LearningPath";
 
 function App() {
   const { user, isLoading } = useUser();
@@ -34,6 +35,7 @@ function App() {
           <Route path="/chat" component={Chat} />
           <Route path="/chance-me" component={ChanceMe} />
           <Route path="/dashboard" component={Dashboard} />
+          <Route path="/learning-path" component={LearningPath} />
           <Route>
             <div className="flex items-center justify-center h-full">
               <h1 className="text-2xl font-bold">404 - Page Not Found</h1>

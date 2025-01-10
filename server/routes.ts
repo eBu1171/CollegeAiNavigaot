@@ -1,9 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { db } from "@db";
-import { schools, userSchools, chanceMe, messages, type User } from "@db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { schools, userSchools, chanceMe, messages, type User, users } from "@db/schema";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { generateCollegeResponse, analyzeAdmissionChances } from "./utils/perplexity";
+import { quests, achievements, userQuests, userAchievements } from "@db/schema";
 
 export function registerRoutes(app: Express): Server {
   // User-School relationship routes
@@ -372,6 +373,141 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Dashboard error:', error);
       res.status(500).json({ error: "Failed to fetch user statistics" });
+    }
+  });
+
+  // Learning Path routes
+  app.get("/api/learning-path/progress", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const [user] = await db
+        .select({
+          totalPoints: users.totalPoints,
+          level: users.level,
+        })
+        .from(users)
+        .where(eq(users.id, (req.user as User).id))
+        .limit(1);
+
+      const [questStats] = await db
+        .select({
+          completed: sql<number>`count(*)::int`,
+        })
+        .from(userQuests)
+        .where(
+          and(
+            eq(userQuests.userId, (req.user as User).id),
+            eq(userQuests.status, "completed")
+          )
+        );
+
+      const [achievementStats] = await db
+        .select({
+          unlocked: sql<number>`count(*)::int`,
+        })
+        .from(userAchievements)
+        .where(eq(userAchievements.userId, (req.user as User).id));
+
+      // Calculate next level requirements
+      const pointsPerLevel = 1000;
+      const currentLevelPoints = (user.level - 1) * pointsPerLevel;
+      const nextLevelPoints = user.level * pointsPerLevel;
+      const pointsToNextLevel = nextLevelPoints - user.totalPoints;
+      const progress = ((user.totalPoints - currentLevelPoints) / pointsPerLevel) * 100;
+
+      res.json({
+        totalPoints: user.totalPoints,
+        level: user.level,
+        questsCompleted: questStats.completed,
+        achievementsUnlocked: achievementStats.unlocked,
+        nextLevel: {
+          pointsNeeded: pointsToNextLevel,
+          progress,
+        },
+      });
+    } catch (error) {
+      console.error("Progress fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch progress" });
+    }
+  });
+
+  app.get("/api/learning-path/quests", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const userQuestsData = await db
+        .select({
+          quest: quests,
+          userQuest: userQuests,
+        })
+        .from(quests)
+        .leftJoin(
+          userQuests,
+          and(
+            eq(userQuests.questId, quests.id),
+            eq(userQuests.userId, (req.user as User).id)
+          )
+        );
+
+      const formattedQuests = userQuestsData.map(({ quest, userQuest }) => ({
+        id: quest.id,
+        title: quest.title,
+        description: quest.description,
+        type: quest.type,
+        points: quest.points,
+        status: userQuest?.status || "not_started",
+        progress: userQuest?.progress || null,
+      }));
+
+      res.json(formattedQuests);
+    } catch (error) {
+      console.error("Quests fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch quests" });
+    }
+  });
+
+  app.get("/api/learning-path/achievements", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const userAchievementsData = await db
+        .select({
+          achievement: achievements,
+          userAchievement: userAchievements,
+        })
+        .from(achievements)
+        .leftJoin(
+          userAchievements,
+          and(
+            eq(userAchievements.achievementId, achievements.id),
+            eq(userAchievements.userId, (req.user as User).id)
+          )
+        );
+
+      const formattedAchievements = userAchievementsData.map(
+        ({ achievement, userAchievement }) => ({
+          id: achievement.id,
+          title: achievement.title,
+          description: achievement.description,
+          type: achievement.type,
+          icon: achievement.icon,
+          points: achievement.points,
+          unlocked: !!userAchievement,
+          unlockedAt: userAchievement?.unlockedAt?.toISOString(),
+        })
+      );
+
+      res.json(formattedAchievements);
+    } catch (error) {
+      console.error("Achievements fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch achievements" });
     }
   });
 

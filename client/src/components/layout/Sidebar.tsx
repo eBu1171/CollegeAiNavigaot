@@ -7,6 +7,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   LogOut,
+  Trophy,
 } from "lucide-react";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +34,11 @@ export function Sidebar() {
   };
 
   const navItems = [
+    {
+      title: "Learning Path",
+      icon: Trophy,
+      href: "/learning-path",
+    },
     {
       title: "Find School",
       icon: School,
