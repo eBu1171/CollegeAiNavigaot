@@ -1,4 +1,4 @@
-import { useState, useEffect as ReactuseEffect } from "react";
+import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,14 +39,14 @@ export default function FindSchool() {
   const { control, register, handleSubmit, formState: { isSubmitting } } = useForm<SchoolSearchForm>();
 
   // Get user's existing schools
-  const { data: userStats } = useQuery<{ schools: { schoolId: number }[] }>({
+  const { data: userStats } = useQuery<{ schools: { id: number }[] }>({
     queryKey: ["/api/user/stats"],
   });
 
   // Initialize addedSchools with existing user schools
-  ReactuseEffect(() => {
+  useEffect(() => {
     if (userStats?.schools) {
-      setAddedSchools(new Set(userStats.schools.map(s => s.schoolId)));
+      setAddedSchools(new Set(userStats.schools.map(s => s.id)));
     }
   }, [userStats]);
 
@@ -65,7 +65,8 @@ export default function FindSchool() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to add school");
+        const error = await response.text();
+        throw new Error(error);
       }
 
       return response.json();

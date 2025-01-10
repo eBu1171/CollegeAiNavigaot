@@ -6,13 +6,44 @@ import { eq, and, desc } from "drizzle-orm";
 import { generateCollegeResponse, analyzeAdmissionChances } from "./utils/perplexity";
 
 export function registerRoutes(app: Express): Server {
-  // School routes
-  app.get("/api/schools", async (req, res) => {
+  // User-School relationship routes
+  app.post("/api/user-schools", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
     try {
-      const allSchools = await db.select().from(schools);
-      res.json(allSchools);
+      const { schoolId, status } = req.body;
+
+      // Check if user already has this school
+      const [existingUserSchool] = await db
+        .select()
+        .from(userSchools)
+        .where(
+          and(
+            eq(userSchools.userId, (req.user as User).id),
+            eq(userSchools.schoolId, schoolId)
+          )
+        )
+        .limit(1);
+
+      if (existingUserSchool) {
+        return res.status(400).json({ error: "School already added to your list" });
+      }
+
+      const [userSchool] = await db
+        .insert(userSchools)
+        .values({
+          userId: (req.user as User).id,
+          schoolId,
+          status,
+        })
+        .returning();
+
+      res.json(userSchool);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch schools" });
+      console.error('Add school error:', error);
+      res.status(500).json({ error: "Failed to add school" });
     }
   });
 
@@ -27,8 +58,11 @@ export function registerRoutes(app: Express): Server {
 
       // Verify the school exists and user has access to it
       const [userSchool] = await db
-        .select()
+        .select({
+          school: schools,
+        })
         .from(userSchools)
+        .innerJoin(schools, eq(schools.id, userSchools.schoolId))
         .where(
           and(
             eq(userSchools.schoolId, schoolId),
@@ -50,8 +84,7 @@ export function registerRoutes(app: Express): Server {
             eq(messages.userId, (req.user as User).id)
           )
         )
-        .orderBy(desc(messages.createdAt))
-        .limit(50);
+        .orderBy(desc(messages.createdAt));
 
       res.json(chatMessages);
     } catch (error) {
@@ -99,9 +132,13 @@ export function registerRoutes(app: Express): Server {
         })
         .returning();
 
-      // Generate AI response using Perplexity with the correct school name
-      const aiResponse = await generateCollegeResponse(userSchool.school.name, content);
+      // Generate AI response using Perplexity with the specific school name
+      const aiResponse = await generateCollegeResponse(
+        userSchool.school.name,
+        content
+      );
 
+      // Insert AI response
       const [aiMessage] = await db
         .insert(messages)
         .values({
@@ -114,11 +151,20 @@ export function registerRoutes(app: Express): Server {
 
       res.json([userMessage, aiMessage]);
     } catch (error) {
-      console.error('Chat error:', error);
-      res.status(500).json({ error: "Failed to send message" });
+      console.error('Chat message error:', error);
+      res.status(500).json({ error: "Failed to process chat message" });
     }
   });
 
+  // School routes
+  app.get("/api/schools", async (req, res) => {
+    try {
+      const allSchools = await db.select().from(schools);
+      res.json(allSchools);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch schools" });
+    }
+  });
   app.post("/api/schools/search", async (req, res) => {
     try {
       const { location, major, satScore, gpa } = req.body;
@@ -172,28 +218,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-
-  // User-School relationship routes
-  app.post("/api/user-schools", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    try {
-      const { schoolId, status } = req.body;
-      const [userSchool] = await db
-        .insert(userSchools)
-        .values({
-          userId: (req.user as User).id,
-          schoolId,
-          status,
-        })
-        .returning();
-      res.json(userSchool);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to add school" });
-    }
-  });
 
   // ChanceMe routes
   app.post("/api/chance-me", async (req, res) => {
