@@ -79,7 +79,7 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ error: "Message content is required" });
       }
 
-      // First verify if the school exists
+      console.log('Looking up school with ID:', schoolId);
       const [school] = await db
         .select()
         .from(schools)
@@ -87,8 +87,10 @@ export function registerRoutes(app: Express): Server {
         .limit(1);
 
       if (!school) {
+        console.error(`School not found with ID: ${schoolId}`);
         return res.status(404).json({ error: "School not found" });
       }
+      console.log('Found school:', school);
 
       // Then check if user has access to this school
       const [userSchool] = await db

@@ -59,8 +59,9 @@ export default function Chat() {
       if (!selectedSchool) {
         throw new Error("Please select a school first");
       }
-
-      const response = await fetch(`/api/chat/${selectedSchool.id}`, {
+      
+      console.log('Sending message to school:', selectedSchool);
+      const response = await fetch(`/api/chat/${selectedSchool.schoolId || selectedSchool.id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
