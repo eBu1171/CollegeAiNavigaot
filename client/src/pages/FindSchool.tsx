@@ -33,6 +33,7 @@ type SchoolRecommendation = {
 
 export default function FindSchool() {
   const [searching, setSearching] = useState(false);
+  const [addedSchools, setAddedSchools] = useState<Set<number>>(new Set());
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { control, register, handleSubmit, formState: { isSubmitting } } = useForm<SchoolSearchForm>();
@@ -57,8 +58,9 @@ export default function FindSchool() {
 
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, schoolId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/user-schools"] });
+      setAddedSchools(prev => new Set([...prev, schoolId]));
       toast({
         title: "School Added",
         description: "The school has been added to your list",
@@ -106,7 +108,9 @@ export default function FindSchool() {
   };
 
   const handleAddSchool = (schoolId: number) => {
-    addSchoolMutation.mutate(schoolId);
+    if (!addedSchools.has(schoolId)) {
+      addSchoolMutation.mutate(schoolId);
+    }
   };
 
   return (
@@ -230,17 +234,20 @@ export default function FindSchool() {
                           </Button>
                           <Button
                             onClick={() => handleAddSchool(school.id)}
-                            disabled={addSchoolMutation.isPending}
+                            disabled={addedSchools.has(school.id)}
                             size="sm"
                           >
-                            {addSchoolMutation.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            ) : addSchoolMutation.isSuccess ? (
-                              <Check className="h-4 w-4 mr-2" />
+                            {addedSchools.has(school.id) ? (
+                              <>
+                                <Check className="h-4 w-4 mr-2" />
+                                Added
+                              </>
                             ) : (
-                              <Plus className="h-4 w-4 mr-2" />
+                              <>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add to My Schools
+                              </>
                             )}
-                            Add to My Schools
                           </Button>
                         </div>
                       </div>

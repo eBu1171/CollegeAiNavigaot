@@ -230,8 +230,21 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const userSchoolsData = await db
-        .select()
+        .select({
+          id: userSchools.id,
+          userId: userSchools.userId,
+          schoolId: userSchools.schoolId,
+          status: userSchools.status,
+          notes: userSchools.notes,
+          createdAt: userSchools.createdAt,
+          schoolName: schools.name,
+          location: schools.location,
+          acceptanceRate: schools.acceptanceRate,
+          chanceMe: chanceMe.aiAnalysis,
+        })
         .from(userSchools)
+        .leftJoin(schools, eq(userSchools.schoolId, schools.id))
+        .leftJoin(chanceMe, eq(userSchools.schoolId, chanceMe.schoolId))
         .where(eq(userSchools.userId, (req.user as User).id));
 
       const stats = {
@@ -239,11 +252,28 @@ export function registerRoutes(app: Express): Server {
         completedApplications: userSchoolsData.filter(s => s.status === "completed").length,
         averageProgress: userSchoolsData.length > 0
           ? Math.round(userSchoolsData.reduce((acc, curr) => acc + (curr.status === "completed" ? 100 : 50), 0) / userSchoolsData.length)
-          : 0
+          : 0,
+        schools: userSchoolsData.map(school => ({
+          id: school.id,
+          name: school.schoolName,
+          location: school.location,
+          status: school.status,
+          acceptanceRate: school.acceptanceRate,
+          deadline: new Date(Date.now() + 7776000000).toISOString(), // 90 days from now as example
+          progress: school.status === "completed" ? 100 : 50,
+          admissionTitle: school.chanceMe
+            ? school.chanceMe.toLowerCase().includes('exceptional') || school.chanceMe.toLowerCase().includes('excellent')
+              ? 'Competitive Applicant'
+              : school.chanceMe.toLowerCase().includes('strong') || school.chanceMe.toLowerCase().includes('good')
+                ? 'Average Applicant'
+                : 'Below Average Applicant'
+            : undefined
+        }))
       };
 
       res.json(stats);
     } catch (error) {
+      console.error('Dashboard error:', error);
       res.status(500).json({ error: "Failed to fetch user statistics" });
     }
   });
