@@ -30,13 +30,10 @@ type Stats = {
   totalSchools: number;
   completedApplications: number;
   averageProgress: number;
+  schools: UserSchool[];
 };
 
 export default function Dashboard() {
-  const { data: schools, isLoading: loadingSchools } = useQuery<UserSchool[]>({
-    queryKey: ["/api/user-schools"],
-  });
-
   const { data: stats, isLoading: loadingStats } = useQuery<Stats>({
     queryKey: ["/api/user/stats"],
   });
@@ -99,11 +96,11 @@ export default function Dashboard() {
           <CardTitle>Your Schools</CardTitle>
         </CardHeader>
         <CardContent>
-          {loadingSchools ? (
+          {loadingStats ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
-          ) : (
+          ) : stats?.schools && stats.schools.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -115,7 +112,7 @@ export default function Dashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {schools?.map((school) => (
+                {stats.schools.map((school) => (
                   <TableRow key={school.id}>
                     <TableCell className="font-medium">{school.name}</TableCell>
                     <TableCell>
@@ -151,6 +148,10 @@ export default function Dashboard() {
                 ))}
               </TableBody>
             </Table>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No schools added yet. Start by finding and adding schools to your list.
+            </div>
           )}
         </CardContent>
       </Card>
