@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useForm, Controller } from "react-hook-form";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,13 +25,17 @@ type SchoolSearchForm = {
 type SchoolRecommendation = {
   id: number;
   name: string;
+  location: string;
+  description: string;
+  acceptanceRate?: number;
   match: number;
 };
 
 export default function FindSchool() {
   const [searching, setSearching] = useState(false);
   const { toast } = useToast();
-  const { register, handleSubmit } = useForm<SchoolSearchForm>();
+  const queryClient = useQueryClient();
+  const { control, register, handleSubmit, formState: { isSubmitting } } = useForm<SchoolSearchForm>();
 
   const { data: recommendations, isLoading } = useQuery<SchoolRecommendation[]>({
     queryKey: ["/api/schools/search"],
@@ -43,17 +47,21 @@ export default function FindSchool() {
       const response = await fetch("/api/schools/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(data),
       });
+
       if (!response.ok) {
-        throw new Error("Failed to search schools");
+        throw new Error(await response.text());
       }
+
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setSearching(true);
+      queryClient.setQueryData(["/api/schools/search"], data);
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast({
         title: "Error",
         description: error.message,
@@ -88,18 +96,24 @@ export default function FindSchool() {
 
               <div className="space-y-2">
                 <Label htmlFor="major">Intended Major</Label>
-                <Select defaultValue="" {...register("major")}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a major" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cs">Computer Science</SelectItem>
-                    <SelectItem value="engineering">Engineering</SelectItem>
-                    <SelectItem value="business">Business</SelectItem>
-                    <SelectItem value="arts">Arts & Humanities</SelectItem>
-                    <SelectItem value="science">Natural Sciences</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Controller
+                  name="major"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a major" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cs">Computer Science</SelectItem>
+                        <SelectItem value="engineering">Engineering</SelectItem>
+                        <SelectItem value="business">Business</SelectItem>
+                        <SelectItem value="arts">Arts & Humanities</SelectItem>
+                        <SelectItem value="science">Natural Sciences</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
 
               <div className="space-y-2">
@@ -126,9 +140,9 @@ export default function FindSchool() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={searchMutation.isPending}
+                disabled={isSubmitting}
               >
-                {searchMutation.isPending ? (
+                {isSubmitting ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
                   <Search className="h-4 w-4 mr-2" />
@@ -153,13 +167,28 @@ export default function FindSchool() {
                 {recommendations.map((school) => (
                   <Card key={school.id}>
                     <CardContent className="p-4">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="font-semibold">{school.name}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {(school.match * 100).toFixed(0)}% match
-                          </p>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <h3 className="font-semibold">{school.name}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              {school.location}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-medium">
+                              {(school.match * 100).toFixed(0)}% match
+                            </p>
+                            {school.acceptanceRate && (
+                              <p className="text-sm text-muted-foreground">
+                                {school.acceptanceRate}% acceptance rate
+                              </p>
+                            )}
+                          </div>
                         </div>
+                        <p className="text-sm text-muted-foreground">
+                          {school.description}
+                        </p>
                         <Button variant="outline" size="sm">
                           View Details
                         </Button>
