@@ -28,10 +28,8 @@ export default function Chat() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Get only user's selected schools
   const { data: schools, isLoading: loadingSchools } = useQuery<{ schools: School[] }>({
     queryKey: ["/api/user/stats"],
-    select: (data) => data,
   });
 
   const { data: messages, isLoading: loadingMessages } = useQuery<Message[]>({
@@ -53,7 +51,8 @@ export default function Chat() {
       });
 
       if (!response.ok) {
-        throw new Error(await response.text());
+        const errorText = await response.text();
+        throw new Error(errorText || "Failed to send message");
       }
 
       return response.json();
@@ -174,7 +173,7 @@ export default function Chat() {
                                 : "bg-primary text-primary-foreground"
                             }`}
                           >
-                            <p className="leading-relaxed">{message.content}</p>
+                            <p className="leading-relaxed whitespace-pre-wrap">{message.content}</p>
                             <span className="text-xs opacity-70 mt-2 block">
                               {new Date(message.createdAt).toLocaleTimeString()}
                             </span>

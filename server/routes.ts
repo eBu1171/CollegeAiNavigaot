@@ -55,14 +55,25 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const schoolId = parseInt(req.params.schoolId);
+      if (isNaN(schoolId)) {
+        return res.status(400).send("Invalid school ID");
+      }
 
-      // Verify the school exists and user has access to it
+      // First verify if the school exists
+      const [school] = await db
+        .select()
+        .from(schools)
+        .where(eq(schools.id, schoolId))
+        .limit(1);
+
+      if (!school) {
+        return res.status(404).send("School not found");
+      }
+
+      // Then check if user has access to this school
       const [userSchool] = await db
-        .select({
-          school: schools,
-        })
+        .select()
         .from(userSchools)
-        .innerJoin(schools, eq(schools.id, userSchools.schoolId))
         .where(
           and(
             eq(userSchools.schoolId, schoolId),
@@ -72,7 +83,7 @@ export function registerRoutes(app: Express): Server {
         .limit(1);
 
       if (!userSchool) {
-        return res.status(403).send("School not found or not authorized");
+        return res.status(403).send("You need to add this school to your list first");
       }
 
       const chatMessages = await db
@@ -100,15 +111,30 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const schoolId = parseInt(req.params.schoolId);
-      const { content } = req.body;
+      if (isNaN(schoolId)) {
+        return res.status(400).send("Invalid school ID");
+      }
 
-      // Verify the school exists and user has access to it
+      const { content } = req.body;
+      if (!content || typeof content !== 'string') {
+        return res.status(400).send("Message content is required");
+      }
+
+      // First verify if the school exists
+      const [school] = await db
+        .select()
+        .from(schools)
+        .where(eq(schools.id, schoolId))
+        .limit(1);
+
+      if (!school) {
+        return res.status(404).send("School not found");
+      }
+
+      // Then check if user has access to this school
       const [userSchool] = await db
-        .select({
-          school: schools,
-        })
+        .select()
         .from(userSchools)
-        .innerJoin(schools, eq(schools.id, userSchools.schoolId))
         .where(
           and(
             eq(userSchools.schoolId, schoolId),
@@ -118,7 +144,7 @@ export function registerRoutes(app: Express): Server {
         .limit(1);
 
       if (!userSchool) {
-        return res.status(403).send("School not found or not authorized");
+        return res.status(403).send("You need to add this school to your list first");
       }
 
       // Insert user message
@@ -132,9 +158,9 @@ export function registerRoutes(app: Express): Server {
         })
         .returning();
 
-      // Generate AI response using Perplexity with the specific school name
+      // Generate AI response using Perplexity
       const aiResponse = await generateCollegeResponse(
-        userSchool.school.name,
+        school.name,
         content
       );
 
