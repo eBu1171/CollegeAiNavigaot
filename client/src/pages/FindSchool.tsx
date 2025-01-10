@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect as ReactuseEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +38,18 @@ export default function FindSchool() {
   const queryClient = useQueryClient();
   const { control, register, handleSubmit, formState: { isSubmitting } } = useForm<SchoolSearchForm>();
 
+  // Get user's existing schools
+  const { data: userStats } = useQuery<{ schools: { schoolId: number }[] }>({
+    queryKey: ["/api/user/stats"],
+  });
+
+  // Initialize addedSchools with existing user schools
+  ReactuseEffect(() => {
+    if (userStats?.schools) {
+      setAddedSchools(new Set(userStats.schools.map(s => s.schoolId)));
+    }
+  }, [userStats]);
+
   const { data: recommendations, isLoading } = useQuery<SchoolRecommendation[]>({
     queryKey: ["/api/schools/search"],
     enabled: searching,
@@ -59,7 +71,7 @@ export default function FindSchool() {
       return response.json();
     },
     onSuccess: (_, schoolId) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user-schools"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/stats"] });
       setAddedSchools(prev => new Set([...prev, schoolId]));
       toast({
         title: "School Added",
@@ -118,6 +130,7 @@ export default function FindSchool() {
       <h1 className="text-3xl font-bold mb-8">Find Your Perfect School</h1>
 
       <div className="grid md:grid-cols-2 gap-8">
+        {/* Search Form */}
         <Card>
           <CardHeader>
             <CardTitle>Search Criteria</CardTitle>
@@ -192,6 +205,7 @@ export default function FindSchool() {
           </CardContent>
         </Card>
 
+        {/* Results */}
         <Card>
           <CardHeader>
             <CardTitle>AI Recommendations</CardTitle>

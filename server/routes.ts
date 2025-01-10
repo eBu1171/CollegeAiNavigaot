@@ -24,6 +24,23 @@ export function registerRoutes(app: Express): Server {
 
     try {
       const schoolId = parseInt(req.params.schoolId);
+
+      // Verify the school exists and user has access to it
+      const [userSchool] = await db
+        .select()
+        .from(userSchools)
+        .where(
+          and(
+            eq(userSchools.schoolId, schoolId),
+            eq(userSchools.userId, (req.user as User).id)
+          )
+        )
+        .limit(1);
+
+      if (!userSchool) {
+        return res.status(403).send("School not found or not authorized");
+      }
+
       const chatMessages = await db
         .select()
         .from(messages)
@@ -38,6 +55,7 @@ export function registerRoutes(app: Express): Server {
 
       res.json(chatMessages);
     } catch (error) {
+      console.error('Chat fetch error:', error);
       res.status(500).json({ error: "Failed to fetch messages" });
     }
   });
@@ -51,15 +69,23 @@ export function registerRoutes(app: Express): Server {
       const schoolId = parseInt(req.params.schoolId);
       const { content } = req.body;
 
-      // Get school information
-      const [school] = await db
-        .select()
-        .from(schools)
-        .where(eq(schools.id, schoolId))
+      // Verify the school exists and user has access to it
+      const [userSchool] = await db
+        .select({
+          school: schools,
+        })
+        .from(userSchools)
+        .innerJoin(schools, eq(schools.id, userSchools.schoolId))
+        .where(
+          and(
+            eq(userSchools.schoolId, schoolId),
+            eq(userSchools.userId, (req.user as User).id)
+          )
+        )
         .limit(1);
 
-      if (!school) {
-        return res.status(404).json({ error: "School not found" });
+      if (!userSchool) {
+        return res.status(403).send("School not found or not authorized");
       }
 
       // Insert user message
@@ -73,8 +99,8 @@ export function registerRoutes(app: Express): Server {
         })
         .returning();
 
-      // Generate AI response using Perplexity
-      const aiResponse = await generateCollegeResponse(school.name, content);
+      // Generate AI response using Perplexity with the correct school name
+      const aiResponse = await generateCollegeResponse(userSchool.school.name, content);
 
       const [aiMessage] = await db
         .insert(messages)
