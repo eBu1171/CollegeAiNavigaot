@@ -32,7 +32,7 @@ type SchoolRecommendation = {
 };
 
 export default function FindSchool() {
-  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<SchoolRecommendation[]>([]);
   const [addedSchools, setAddedSchools] = useState<Set<number>>(new Set());
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -43,16 +43,38 @@ export default function FindSchool() {
     queryKey: ["/api/user/stats"],
   });
 
-  // Initialize addedSchools with existing user schools
+  // Update addedSchools when userStats changes
   useEffect(() => {
     if (userStats?.schools) {
       setAddedSchools(new Set(userStats.schools.map(s => s.id)));
     }
-  }, [userStats]);
+  }, [userStats, setAddedSchools]);
 
-  const { data: recommendations, isLoading } = useQuery<SchoolRecommendation[]>({
-    queryKey: ["/api/schools/search"],
-    enabled: searching,
+  const searchMutation = useMutation({
+    mutationFn: async (data: SchoolSearchForm) => {
+      const response = await fetch("/api/schools/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setSearchResults(data);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const addSchoolMutation = useMutation({
@@ -78,34 +100,6 @@ export default function FindSchool() {
         title: "School Added",
         description: "The school has been added to your list",
       });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const searchMutation = useMutation({
-    mutationFn: async (data: SchoolSearchForm) => {
-      const response = await fetch("/api/schools/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
-      return response.json();
-    },
-    onSuccess: (data) => {
-      setSearching(true);
-      queryClient.setQueryData(["/api/schools/search"], data);
     },
     onError: (error: Error) => {
       toast({
@@ -143,7 +137,7 @@ export default function FindSchool() {
                 <Input
                   id="location"
                   placeholder="e.g. California, Northeast, etc."
-                  {...register("location")}
+                  {...register("location", { required: true })}
                 />
               </div>
 
@@ -152,6 +146,7 @@ export default function FindSchool() {
                 <Controller
                   name="major"
                   control={control}
+                  rules={{ required: true }}
                   render={({ field }) => (
                     <Select onValueChange={field.onChange} value={field.value}>
                       <SelectTrigger>
@@ -174,6 +169,8 @@ export default function FindSchool() {
                 <Input
                   id="satScore"
                   type="number"
+                  min="400"
+                  max="1600"
                   placeholder="Your SAT score"
                   {...register("satScore")}
                 />
@@ -185,6 +182,8 @@ export default function FindSchool() {
                   id="gpa"
                   type="number"
                   step="0.01"
+                  min="0"
+                  max="4"
                   placeholder="Your GPA"
                   {...register("gpa")}
                 />
@@ -193,9 +192,9 @@ export default function FindSchool() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={isSubmitting}
+                disabled={isSubmitting || searchMutation.isPending}
               >
-                {isSubmitting ? (
+                {(isSubmitting || searchMutation.isPending) ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
                   <Search className="h-4 w-4 mr-2" />
@@ -209,16 +208,16 @@ export default function FindSchool() {
         {/* Results */}
         <Card>
           <CardHeader>
-            <CardTitle>AI Recommendations</CardTitle>
+            <CardTitle>Schools</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {searchMutation.isPending ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
-            ) : recommendations ? (
+            ) : searchResults.length > 0 ? (
               <div className="space-y-4">
-                {recommendations.map((school) => (
+                {searchResults.map((school) => (
                   <Card key={school.id}>
                     <CardContent className="p-4">
                       <div className="flex flex-col gap-2">
@@ -231,7 +230,7 @@ export default function FindSchool() {
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-medium">
-                              {(school.match * 100).toFixed(0)}% match
+                              {Math.round(school.match * 100)}% match
                             </p>
                             {school.acceptanceRate && (
                               <p className="text-sm text-muted-foreground">
@@ -243,13 +242,10 @@ export default function FindSchool() {
                         <p className="text-sm text-muted-foreground">
                           {school.description}
                         </p>
-                        <div className="flex justify-between items-center mt-2">
-                          <Button variant="outline" size="sm">
-                            View Details
-                          </Button>
+                        <div className="flex justify-end items-center mt-2">
                           <Button
                             onClick={() => handleAddSchool(school.id)}
-                            disabled={addedSchools.has(school.id)}
+                            disabled={addedSchools.has(school.id) || addSchoolMutation.isPending}
                             size="sm"
                           >
                             {addedSchools.has(school.id) ? (
@@ -272,8 +268,11 @@ export default function FindSchool() {
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
-                Enter your criteria and click "Find Schools" to get personalized
-                recommendations
+                {searchMutation.error ? (
+                  "Error fetching schools. Please try again later."
+                ) : (
+                  "Enter your criteria and click 'Find Schools' to get personalized recommendations"
+                )}
               </div>
             )}
           </CardContent>

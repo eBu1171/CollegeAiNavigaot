@@ -169,33 +169,49 @@ export function registerRoutes(app: Express): Server {
     try {
       const { location, major, satScore, gpa } = req.body;
 
+      if (!location) {
+        return res.status(400).json({ error: "Location is required" });
+      }
+
       // Get all schools from the database
-      const allSchools = await db.select().from(schools);
+      const allSchools = await db
+        .select()
+        .from(schools);
 
       // Calculate match scores based on provided criteria
       const recommendations = allSchools.map(school => {
         let matchScore = 0;
+        let totalFactors = 1; // Start with 1 for location which is required
 
-        // Location matching
+        // Location matching (case insensitive)
         if (school.location.toLowerCase().includes(location.toLowerCase())) {
-          matchScore += 0.3;
+          matchScore += 1;
         }
 
         // SAT score matching (if provided)
         if (satScore && school.averageSAT) {
+          totalFactors++;
           const satDiff = Math.abs(parseInt(satScore) - school.averageSAT);
-          if (satDiff <= 100) matchScore += 0.3;
-          else if (satDiff <= 200) matchScore += 0.2;
-          else if (satDiff <= 300) matchScore += 0.1;
+          if (satDiff <= 50) matchScore += 1;
+          else if (satDiff <= 100) matchScore += 0.8;
+          else if (satDiff <= 200) matchScore += 0.6;
+          else if (satDiff <= 300) matchScore += 0.4;
+          else matchScore += 0.2;
         }
 
         // GPA matching (if provided)
         if (gpa && school.averageGPA) {
+          totalFactors++;
           const gpaDiff = Math.abs(parseFloat(gpa) - school.averageGPA);
-          if (gpaDiff <= 0.3) matchScore += 0.4;
-          else if (gpaDiff <= 0.6) matchScore += 0.3;
-          else if (gpaDiff <= 1.0) matchScore += 0.2;
+          if (gpaDiff <= 0.2) matchScore += 1;
+          else if (gpaDiff <= 0.4) matchScore += 0.8;
+          else if (gpaDiff <= 0.6) matchScore += 0.6;
+          else if (gpaDiff <= 0.8) matchScore += 0.4;
+          else matchScore += 0.2;
         }
+
+        // Calculate final match score as a percentage
+        const finalMatchScore = matchScore / totalFactors;
 
         return {
           id: school.id,
@@ -203,18 +219,19 @@ export function registerRoutes(app: Express): Server {
           location: school.location,
           description: school.description,
           acceptanceRate: school.acceptanceRate,
-          match: matchScore,
+          match: finalMatchScore,
         };
       });
 
       // Sort by match score and return top matches
       const sortedRecommendations = recommendations
         .sort((a, b) => b.match - a.match)
-        .slice(0, 10);
+        .filter(school => school.match > 0); // Only return schools with some match
 
       res.json(sortedRecommendations);
     } catch (error) {
-      res.status(500).json({ error: "Failed to get recommendations" });
+      console.error('School search error:', error);
+      res.status(500).json({ error: "Failed to search schools" });
     }
   });
 
