@@ -28,7 +28,7 @@ export default function Chat() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: schools, isLoading: loadingSchools } = useQuery<{ schools: School[] }>({
+  const { data: userStats, isLoading: loadingSchools } = useQuery<{ schools: School[] }>({
     queryKey: ["/api/user/stats"],
   });
 
@@ -42,6 +42,8 @@ export default function Chat() {
       if (!selectedSchool) {
         throw new Error("Please select a school first");
       }
+
+      console.log("Sending message to school:", selectedSchool.id); // Debug log
 
       const response = await fetch(`/api/chat/${selectedSchool.id}`, {
         method: "POST",
@@ -60,7 +62,7 @@ export default function Chat() {
     onSuccess: (newMessages) => {
       queryClient.setQueryData(
         ["/api/chat", selectedSchool?.id],
-        (oldMessages: Message[] = []) => [...oldMessages, ...newMessages]
+        (oldMessages: Message[] = []) => [...newMessages, ...oldMessages]
       );
       setMessageInput("");
     },
@@ -95,10 +97,10 @@ export default function Chat() {
                 <div className="flex justify-center py-4">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
-              ) : schools?.schools && schools.schools.length > 0 ? (
+              ) : userStats?.schools && userStats.schools.length > 0 ? (
                 <ScrollArea className="h-[calc(100vh-12rem)]">
                   <div className="space-y-2">
-                    {schools.schools.map((school) => (
+                    {userStats.schools.map((school) => (
                       <Button
                         key={school.id}
                         variant={
@@ -107,7 +109,10 @@ export default function Chat() {
                             : "ghost"
                         }
                         className="w-full justify-start"
-                        onClick={() => setSelectedSchool(school)}
+                        onClick={() => {
+                          console.log("Selected school:", school); // Debug log
+                          setSelectedSchool(school);
+                        }}
                       >
                         <div className="text-left">
                           <div>{school.name}</div>
@@ -153,9 +158,9 @@ export default function Chat() {
                     <div className="flex justify-center py-4">
                       <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
-                  ) : (
+                  ) : messages ? (
                     <div className="space-y-4">
-                      {messages?.map((message) => (
+                      {messages.map((message) => (
                         <motion.div
                           key={message.id}
                           initial={{ opacity: 0, y: 20 }}
@@ -195,7 +200,7 @@ export default function Chat() {
                         </motion.div>
                       )}
                     </div>
-                  )}
+                  ) : null}
                 </AnimatePresence>
               </ScrollArea>
 

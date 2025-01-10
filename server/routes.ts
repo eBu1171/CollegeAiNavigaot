@@ -59,6 +59,8 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).send("Invalid school ID");
       }
 
+      console.log("Fetching messages for school:", schoolId); // Debug log
+
       // First verify if the school exists
       const [school] = await db
         .select()
@@ -119,6 +121,8 @@ export function registerRoutes(app: Express): Server {
       if (!content || typeof content !== 'string') {
         return res.status(400).send("Message content is required");
       }
+
+      console.log("Sending message for school:", schoolId); // Debug log
 
       // First verify if the school exists
       const [school] = await db
