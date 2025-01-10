@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { db } from "@db";
-import { schools, userSchools, chanceMe, type User } from "@db/schema";
-import { eq } from "drizzle-orm";
+import { schools, userSchools, chanceMe, messages, type User } from "@db/schema";
+import { eq, and, desc } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   // School routes
@@ -12,6 +12,79 @@ export function registerRoutes(app: Express): Server {
       res.json(allSchools);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch schools" });
+    }
+  });
+
+  // Chat routes
+  app.get("/api/chat/:schoolId", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const schoolId = parseInt(req.params.schoolId);
+      const chatMessages = await db
+        .select()
+        .from(messages)
+        .where(
+          and(
+            eq(messages.schoolId, schoolId),
+            eq(messages.userId, (req.user as User).id)
+          )
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(50);
+
+      res.json(chatMessages);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  app.post("/api/chat/:schoolId", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const schoolId = parseInt(req.params.schoolId);
+      const { content } = req.body;
+
+      // Insert user message
+      const [userMessage] = await db
+        .insert(messages)
+        .values({
+          userId: (req.user as User).id,
+          schoolId,
+          content,
+          isAI: false,
+        })
+        .returning();
+
+      // Generate AI response (simple response for now)
+      const aiResponses = [
+        "That's a great question about our university!",
+        "I can help you understand more about our programs.",
+        "Let me provide you with more information about that.",
+        "That's an interesting point you raise about our campus.",
+        "I'd be happy to explain more about our admissions process.",
+      ];
+
+      const aiResponse = aiResponses[Math.floor(Math.random() * aiResponses.length)];
+
+      const [aiMessage] = await db
+        .insert(messages)
+        .values({
+          userId: (req.user as User).id,
+          schoolId,
+          content: aiResponse,
+          isAI: true,
+        })
+        .returning();
+
+      res.json([userMessage, aiMessage]);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to send message" });
     }
   });
 
@@ -67,6 +140,7 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ error: "Failed to get recommendations" });
     }
   });
+
 
   // User-School relationship routes
   app.post("/api/user-schools", async (req, res) => {
@@ -189,7 +263,7 @@ export function registerRoutes(app: Express): Server {
       const stats = {
         totalSchools: userSchoolsData.length,
         completedApplications: userSchoolsData.filter(s => s.status === "completed").length,
-        averageProgress: userSchoolsData.length > 0 
+        averageProgress: userSchoolsData.length > 0
           ? Math.round(userSchoolsData.reduce((acc, curr) => acc + (curr.status === "completed" ? 100 : 50), 0) / userSchoolsData.length)
           : 0
       };

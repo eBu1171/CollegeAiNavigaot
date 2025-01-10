@@ -3,14 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Send } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 type Message = {
   id: number;
   content: string;
   isAI: boolean;
-  timestamp: string;
+  createdAt: string;
 };
 
 type School = {
@@ -21,6 +22,8 @@ type School = {
 export default function Chat() {
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [messageInput, setMessageInput] = useState("");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: schools, isLoading: loadingSchools } = useQuery<School[]>({
     queryKey: ["/api/schools"],
@@ -31,10 +34,40 @@ export default function Chat() {
     enabled: !!selectedSchool,
   });
 
+  const sendMessageMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const response = await fetch(`/api/chat/${selectedSchool?.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send message");
+      }
+
+      return response.json();
+    },
+    onSuccess: (newMessages) => {
+      queryClient.setQueryData(
+        ["/api/chat", selectedSchool?.id],
+        (oldMessages: Message[] = []) => [...oldMessages, ...newMessages]
+      );
+      setMessageInput("");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSendMessage = () => {
     if (!messageInput.trim()) return;
-    // TODO: Implement message sending
-    setMessageInput("");
+    sendMessageMutation.mutate(messageInput);
   };
 
   return (
@@ -110,7 +143,7 @@ export default function Chat() {
                         >
                           <p>{message.content}</p>
                           <span className="text-xs opacity-70">
-                            {new Date(message.timestamp).toLocaleTimeString()}
+                            {new Date(message.createdAt).toLocaleTimeString()}
                           </span>
                         </div>
                       </div>

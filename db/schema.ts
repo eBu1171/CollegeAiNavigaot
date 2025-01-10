@@ -20,6 +20,15 @@ export const schools = pgTable("schools", {
   averageGPA: integer("average_gpa"),
 });
 
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  schoolId: integer("school_id").references(() => schools.id).notNull(),
+  content: text("content").notNull(),
+  isAI: boolean("is_ai").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const userSchools = pgTable("user_schools", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id).notNull(),
@@ -45,11 +54,13 @@ export const chanceMe = pgTable("chance_me", {
 export const schoolRelations = relations(schools, ({ many }) => ({
   userSchools: many(userSchools),
   chanceMes: many(chanceMe),
+  messages: many(messages),
 }));
 
 export const userRelations = relations(users, ({ many }) => ({
   userSchools: many(userSchools),
   chanceMes: many(chanceMe),
+  messages: many(messages),
 }));
 
 export const insertUserSchema = createInsertSchema(users);
