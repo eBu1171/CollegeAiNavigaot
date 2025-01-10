@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { db } from "@db";
-import { schools, userSchools, chanceMe } from "@db/schema";
+import { schools, userSchools, chanceMe, type User } from "@db/schema";
 import { eq } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
@@ -39,7 +39,7 @@ export function registerRoutes(app: Express): Server {
       const [userSchool] = await db
         .insert(userSchools)
         .values({
-          userId: req.user!.id,
+          userId: (req.user as User).id,
           schoolId,
           status,
         })
@@ -65,11 +65,11 @@ export function registerRoutes(app: Express): Server {
       const [entry] = await db
         .insert(chanceMe)
         .values({
-          userId: req.user!.id,
+          userId: (req.user as User).id,
           schoolId,
-          gpa,
-          sat,
-          act,
+          gpa: parseInt(gpa),
+          sat: sat ? parseInt(sat) : null,
+          act: act ? parseInt(act) : null,
           extracurriculars,
           essays,
           aiAnalysis,
@@ -79,6 +79,32 @@ export function registerRoutes(app: Express): Server {
       res.json(entry);
     } catch (error) {
       res.status(500).json({ error: "Failed to process ChanceMe request" });
+    }
+  });
+
+  // User statistics route for dashboard
+  app.get("/api/user/stats", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).send("Not authenticated");
+    }
+
+    try {
+      const userSchoolsData = await db
+        .select()
+        .from(userSchools)
+        .where(eq(userSchools.userId, (req.user as User).id));
+
+      const stats = {
+        totalSchools: userSchoolsData.length,
+        completedApplications: userSchoolsData.filter(s => s.status === "completed").length,
+        averageProgress: userSchoolsData.length > 0 
+          ? Math.round(userSchoolsData.reduce((acc, curr) => acc + (curr.status === "completed" ? 100 : 50), 0) / userSchoolsData.length)
+          : 0
+      };
+
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch user statistics" });
     }
   });
 
