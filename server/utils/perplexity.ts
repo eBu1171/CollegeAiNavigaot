@@ -20,12 +20,24 @@ async function getPerplexityResponse(messages: ChatCompletionMessage[]): Promise
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful college advisor assistant. Provide accurate, concise information about colleges, admissions, programs, and campus life. Base your responses on factual information. When responding about specific colleges, focus on their unique features, programs, and requirements.'
+            content: `You are a highly knowledgeable college advisor with expertise in US higher education. 
+            Focus on providing accurate, detailed information about:
+            - College admissions requirements and processes
+            - Academic programs and majors
+            - Campus life and student experiences
+            - Research opportunities and faculty expertise
+            - Financial aid and scholarships
+            - Career outcomes and alumni success
+
+            Base your responses on factual, up-to-date information. When discussing specific colleges, 
+            include concrete details about their unique features, programs, and requirements. 
+            If uncertain about specific details, acknowledge this and provide general guidance 
+            while suggesting where to find more accurate information.`
           },
           ...messages
         ],
-        temperature: 0.2,
-        max_tokens: 300,
+        temperature: 0.3, // Lower temperature for more focused, factual responses
+        max_tokens: 500, // Increased token limit for more detailed responses
         top_p: 0.9,
         stream: false
       }),
@@ -38,10 +50,10 @@ async function getPerplexityResponse(messages: ChatCompletionMessage[]): Promise
     }
 
     const data = await response.json();
-    return data.choices[0]?.message?.content || 'I apologize, but I am unable to provide information about this college at the moment.';
+    return data.choices[0]?.message?.content || 'I apologize, but I am unable to provide information about this college at the moment. Please try again or check the official college website for the most accurate information.';
   } catch (error) {
     console.error('Error calling Perplexity API:', error);
-    return 'I apologize, but I am experiencing technical difficulties. Please try again later.';
+    return 'I apologize, but I am experiencing technical difficulties. Please check the official college website or try again later.';
   }
 }
 
@@ -50,16 +62,17 @@ export async function generateCollegeResponse(
   userMessage: string
 ): Promise<string> {
   try {
+    // Enhanced context for better college-specific responses
     const messages: ChatCompletionMessage[] = [
       {
         role: 'user',
-        content: `Regarding ${schoolName}: ${userMessage}`
+        content: `Regarding ${schoolName}: ${userMessage}\n\nPlease provide specific, accurate information about this college, including relevant statistics, programs, or requirements where applicable.`
       }
     ];
 
     return await getPerplexityResponse(messages);
   } catch (error) {
     console.error('Error generating college response:', error);
-    return 'I apologize, but I am unable to provide information about this college at the moment. Please try again later.';
+    return 'I apologize, but I am unable to provide information about this college at the moment. Please check the official college website or try again later.';
   }
 }
