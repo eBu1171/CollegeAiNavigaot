@@ -48,7 +48,7 @@ export default function FindSchool() {
     if (userStats?.schools) {
       setAddedSchools(new Set(userStats.schools.map(s => s.id)));
     }
-  }, [userStats, setAddedSchools]);
+  }, [userStats]);
 
   const searchMutation = useMutation({
     mutationFn: async (data: SchoolSearchForm) => {
@@ -110,14 +110,14 @@ export default function FindSchool() {
     },
   });
 
-  const onSubmit = (data: SchoolSearchForm) => {
-    searchMutation.mutate(data);
-  };
-
   const handleAddSchool = (schoolId: number) => {
     if (!addedSchools.has(schoolId)) {
       addSchoolMutation.mutate(schoolId);
     }
+  };
+
+  const onSubmit = (data: SchoolSearchForm) => {
+    searchMutation.mutate(data);
   };
 
   return (
@@ -243,23 +243,21 @@ export default function FindSchool() {
                           {school.description}
                         </p>
                         <div className="flex justify-end items-center mt-2">
-                          <Button
-                            onClick={() => handleAddSchool(school.id)}
-                            disabled={addedSchools.has(school.id) || addSchoolMutation.isPending}
-                            size="sm"
-                          >
-                            {addedSchools.has(school.id) ? (
-                              <>
-                                <Check className="h-4 w-4 mr-2" />
-                                Added
-                              </>
-                            ) : (
-                              <>
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add to My Schools
-                              </>
-                            )}
-                          </Button>
+                          {addedSchools.has(school.id) ? (
+                            <Button disabled size="sm" variant="outline">
+                              <Check className="h-4 w-4 mr-2" />
+                              Added to List
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={() => handleAddSchool(school.id)}
+                              disabled={addSchoolMutation.isPending}
+                              size="sm"
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              Add to My Schools
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>
