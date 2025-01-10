@@ -726,11 +726,11 @@ export function registerRoutes(app: Express): Server {
         name: school.name,
         location: school.location,
         deadlines: {
-          earlyAction: school.deadlines?.earlyAction?.toISOString(),
-          earlyDecision: school.deadlines?.earlyDecision?.toISOString(),
-          regularDecision: school.deadlines?.regularDecision?.toISOString(),
-          financialAid: school.deadlines?.financialAid?.toISOString(),
-          scholarship: school.deadlines?.scholarship?.toISOString(),
+          earlyAction: school.deadlines?.earlyAction instanceof Date ? school.deadlines.earlyAction.toISOString() : null,
+          earlyDecision: school.deadlines?.earlyDecision instanceof Date ? school.deadlines.earlyDecision.toISOString() : null,
+          regularDecision: school.deadlines?.regularDecision instanceof Date ? school.deadlines.regularDecision.toISOString() : null,
+          financialAid: school.deadlines?.financialAid instanceof Date ? school.deadlines.financialAid.toISOString() : null,
+          scholarship: school.deadlines?.scholarship instanceof Date ? school.deadlines.scholarship.toISOString() : null,
         },
       }));
 
@@ -787,6 +787,10 @@ export function registerRoutes(app: Express): Server {
           .where(eq(applicationDeadlines.schoolId, schoolId))
           .limit(1);
 
+        if (!schoolDeadlines?.regularDecision) {
+          return res.status(404).send("School deadlines not found");
+        }
+
         // Create user checklist items
         const newItems = await Promise.all(
           genericItems.map(async (item) => {
@@ -801,7 +805,7 @@ export function registerRoutes(app: Express): Server {
                 userId: (req.user as User).id,
                 schoolId,
                 itemId: item.id,
-                dueDate,
+                dueDate: dueDate,
                 completed: false,
               })
               .returning();
@@ -822,50 +826,12 @@ export function registerRoutes(app: Express): Server {
 
       res.json(userItems.map(item => ({
         ...item,
-        dueDate: item.dueDate.toISOString(),
-        completedAt: item.completedAt?.toISOString(),
+        dueDate: item.dueDate instanceof Date ? item.dueDate.toISOString() : item.dueDate,
+        completedAt: item.completedAt instanceof Date ? item.completedAt.toISOString() : item.completedAt,
       })));
     } catch (error) {
       console.error('Checklist fetch error:', error);
       res.status(500).json({ error: "Failed to fetch checklist" });
-    }
-  });
-
-  app.post("/api/timeline/checklist/:itemId", async (req, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).send("Not authenticated");
-    }
-
-    try {
-      const itemId = parseInt(req.params.itemId);
-      const { completed } = req.body;
-
-      if (isNaN(itemId)) {
-        return res.status(400).send("Invalid item ID");
-      }
-
-      const [updatedItem] = await db
-        .update(userChecklist)
-        .set({
-          completed,
-          completedAt: completed ? new Date() : null,
-        })
-        .where(
-          and(
-            eq(userChecklist.id, itemId),
-            eq(userChecklist.userId, (req.user as User).id)
-          )
-        )
-        .returning();
-
-      if (!updatedItem) {
-        return res.status(404).send("Checklist item not found");
-      }
-
-      res.json(updatedItem);
-    } catch (error) {
-      console.error('Checklist update error:', error);
-      res.status(500).json({ error: "Failed to update checklist item" });
     }
   });
 
